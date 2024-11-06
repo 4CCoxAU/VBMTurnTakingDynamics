@@ -1,6 +1,6 @@
 This repository contains data, code and supplementary materials for the following paper:
 
-Turn-Taking Dynamics in Child-Adult Conversations Across Social Contexts: A Comparative Study of Autistic and Typically Developing Children
+Social Context Matters for Turn-Taking Dynamics: A Comparative Study of Autistic and Typically Developing Children
 
 Abstract:
 
