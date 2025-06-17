@@ -1,0 +1,94 @@
+---
+title: "00_setup"
+output: html_document
+date: "2025-06-17"
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+#install.packages('pacman')
+library(pacman)
+pacman::p_load(tidyverse,
+               ggcorrplot,
+               job,
+               cowplot,
+               ggrain,
+               here, 
+               brms,
+               readxl,
+               ggridges,
+               viridis,
+               patchwork,
+               ggbeeswarm,
+               faux,
+               bayestestR,
+               see,
+               modelr,
+               xtable,
+               gghalves,
+               kableExtra,
+               rmarkdown,
+               rstan,
+               irr,
+               boot)
+```
+
+# Read in ...
+
+## Data
+```{r}
+d <- read.csv(here('data/d.csv'))
+d_dyadic <- read.csv(here('data/d_dyadic.csv'))
+```
+
+## Functions
+
+```{r}
+source(here("analysis_scripts/functions.R"))
+```
+
+
+# Run Code
+
+## Model 1
+
+```{r}
+render(input = here("analysis_scripts", "01_ResponseLatencies.Rmd"),
+       output_file = here("code_output_files", "01_ResponseLatencies.pdf"))
+```
+
+## Model 2
+
+```{r}
+render(input = here("analysis_scripts", "02_IndividualDifferences.Rmd"),
+       output_file = here("code_output_files", "02_IndividualDifferences.pdf"))
+```
+
+## Model 3
+
+```{r}
+render(input = here("analysis_scripts", "03_Predictability.Rmd"),
+       output_file = here("code_output_files", "03_Predictability.pdf"))
+```
+
+## Model 4
+
+```{r}
+render(input = here("analysis_scripts", "04_DyadicModel.Rmd"),
+       output_file = here("code_output_files", "04_DyadicModel.pdf"))
+```
+
+## Additional Models
+
+```{r}
+render(input = here("analysis_scripts", "05_AdditionalAnalyses.Rmd"),
+       output_file = here("code_output_files", "05_AdditionalAnalyses.pdf"))
+```
+
+## Model Checks
+
+```{r}
+render(input = here("analysis_scripts", "06_modelchecks.Rmd"),
+       output_file = here("code_output_files", "06_modelchecks.pdf"))
+```

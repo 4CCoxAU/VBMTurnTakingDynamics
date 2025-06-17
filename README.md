@@ -1,11 +1,101 @@
+# Social Context Matters for Turn-Taking Dynamics: A Comparative Study of Autistic and Typically Developing Children
+
 This repository contains data, code and supplementary materials for the following paper:
 
-Social Context Matters for Turn-Taking Dynamics: A Comparative Study of Autistic and Typically Developing Children
+**Social Context Matters for Turn-Taking Dynamics: A Comparative Study of Autistic and Typically Developing Children**
 
-Abstract:
+## Overview
 
-Engaging in fluent conversation is a surprisingly complex task that requires interactants to promptly respond to each other in a way that is appropriate to the social context. In this study, we disentangled different dimensions of turn-taking by investigating how the dynamics of child-adult interactions changed according to the activity (task-oriented versus freer conversation) and the familiarity of the interlocutor (familiar versus unfamiliar).
-Twenty-eight autistic children (16 male; Mage = 10.8 years) and 20 age-matched typically developing children (8 male; Mage = 9.6) participated in seven task-orientated face-to-face conversations with their caregivers (336 total conversations) and seven more telephone conversations alternately with their caregivers (144 total conversations, 60 with typical development group) and an experimenter (191 total conversations, 112 with autism
-group). By modelling inter-turn response latencies in multi-level Bayesian locationscale models to include long tails, we found good test-rest reliability across sessions and contexts, and showed that context strongly shaped group differences in response latencies. Autistic children exhibited more overlaps, produced faster response latencies and shorter pauses than than typically developing children – and these group differences were stronger when conversing with the unfamiliar experimenter. Unfamiliarity also made the relation between individual differences and latencies evident: only in conversations with the experimenter were higher socio-cognitive skills, lower social motivation and lower social awareness associated with faster responses. Information flow and shared tempo were also influenced by familiarity: children adapted their response latencies to the predictability and tempo of their interlocutor’s turn, but only when interacting with their caregivers and not the experimenter. These results highlight the need to construe turn-taking as a multicomponential construct that is shaped by individual differences, interpersonal dynamics, and the affordances of the context.
+This project investigates how turn-taking dynamics in child-adult conversations are influenced by social context, individual differences, and interpersonal dynamics in both autistic and typically developing children. The analysis examines response latencies across different conversational contexts (matching games, conversations with parents, and conversations with experimenters).
 
-OSF link: https://osf.io/qhdzm/
+## Abstract
+
+Engaging in fluent conversation is a surprisingly complex task that requires interactants to promptly respond to each other in a way that is appropriate to the social context. In this study, we disentangled different dimensions of turn-taking by investigating how the dynamics of child-adult interactions changed according to the activity (task-oriented versus freer conversation) and the familiarity of the interlocutor (familiar versus unfamiliar). Twenty-eight autistic children (16 male; Mage = 10.8 years) and 20 age-matched typically developing children (8 male; Mage = 9.6) participated in seven task-orientated face-to-face conversations with their caregivers (336 total conversations) and seven more telephone conversations alternately with their caregivers (144 total conversations, 60 with typical development group) and an experimenter (191 total conversations, 112 with autism group). By modelling inter-turn response latencies in multi-level Bayesian locationscale models to include long tails, we found good test-rest reliability across sessions and contexts, and showed that context strongly shaped group differences in response latencies. Autistic children exhibited more overlaps, produced faster response latencies and shorter pauses than than typically developing children – and these group differences were stronger when conversing with the unfamiliar experimenter. Unfamiliarity also made the relation between individual differences and latencies evident: only in conversations with the experimenter were higher socio-cognitive skills, lower social motivation and lower social awareness associated with faster responses. Information flow and shared tempo were also influenced by familiarity: children adapted their response latencies to the predictability and tempo of their interlocutor's turn, but only when interacting with their caregivers and not the experimenter. These results highlight the need to construe turn-taking as a multicomponential construct that is shaped by individual differences, interpersonal dynamics, and the affordances of the context.
+
+**OSF link:** https://osf.io/qhdzm/
+
+## Repository Structure
+
+```
+VBMTurnTaking/
+├── analysis_scripts/          # Main analysis code
+│   ├── 00_setup.Rmd          # Initial setup and data preparation
+│   ├── 01_ResponseLatencies.Rmd   # Response latency analysis (RQ1 & RQ2)
+│   ├── 02_IndividualDifferences.Rmd  # Individual differences analysis (RQ3)
+│   ├── 03_Predictability.Rmd     # Utterance predictability analysis (RQ4)
+│   ├── 04_DyadicModel.Rmd       # Dyadic turn-taking models (RQ5)
+│   ├── 05_AdditionalAnalyses.Rmd  # Supplementary analyses
+│   ├── 06_modelchecks.Rmd       # Model validation and diagnostics
+│   └── functions.R              # Custom analysis functions
+└── README.md                    # This file
+```
+
+## Research Questions
+
+The analysis addresses five main research questions:
+
+- **RQ1:** Are response latencies an individual trait, or do differences between sessions and social contexts matter?
+- **RQ2:** Does autism involve slower response latencies than typical development, accounting for overlaps and long pauses?
+- **RQ3:** Are differences in turn-taking behavior grounded in individual differences (social cognition, language skills, motor skills)?
+- **RQ4:** Is turn-taking behavior grounded in turn-by-turn information flow (predictability of utterances)?
+- **RQ5:** Is turn-taking behavior grounded in turn-by-turn temporal adjustments in the interaction?
+
+## Key Features
+
+- **Bayesian Multilevel Modeling:** Uses ex-Gaussian distributions to model response latencies including overlaps and long pauses
+- **Multiple Social Contexts:** Analyzes three contexts:
+  - Matching games with parents
+  - Free conversations with parents
+  - Conversations with unfamiliar experimenters
+- **Individual Differences:** Incorporates measures of social cognition, language skills, and motor abilities
+- **Information Flow Analysis:** Examines utterance predictability using transformer-based embeddings
+- **Interpersonal Dynamics:** Models temporal dependencies between conversational partners
+
+## Analysis Scripts
+
+### Core Analysis Files
+
+- **`00_setup.Rmd`:** Data loading, preprocessing, and initial setup
+- **`01_ResponseLatencies.Rmd`:** Main analysis of response latencies across contexts and groups
+- **`02_IndividualDifferences.Rmd`:** Analysis of how individual skills relate to turn-taking
+- **`03_Predictability.Rmd`:** Utterance predictability and information flow analysis
+- **`04_DyadicModel.Rmd`:** Dyadic models examining interpersonal coordination
+- **`05_AdditionalAnalyses.Rmd`:** Control analyses and sensitivity tests
+- **`06_modelchecks.Rmd`:** Model diagnostics and validation procedures
+
+### Support Files
+
+- **`functions.R`:** Custom functions for data processing and analysis
+
+## Statistical Approach
+
+- **Bayesian Framework:** All models implemented using `brms` package in R
+- **Ex-Gaussian Distributions:** Accounts for both overlaps (negative latencies) and long pauses
+- **Multilevel Structure:** Nested by participant and session
+- **Multiple Comparisons:** Evidence ratios for hypothesis testing
+
+## Requirements
+
+- R (≥ 4.4)
+- Key packages: `brms`, `bayesplot`, `tidyverse`
+- Stan for Bayesian computation
+
+## Usage
+
+1. Run scripts in numerical order starting with `00_setup.Rmd`
+2. Each script can be run independently after setup
+3. Model fitting may take considerable time due to Bayesian computation
+4. Results and figures will be saved to appropriate directories
+
+## Citation
+
+If you use this code, please cite:
+
+Cox, C., Fusaroli, R., Nielsen, Y. A., Cho, S., Rocca, R., Simonsen, A., ... & Parish-Morris, J. (2024). Social Context Matters for Turn-Taking Dynamics: A Comparative Study of Autistic and Typically Developing Children.
+
+Cox, C. M. M., Fusaroli, R., Nielsen, Y. A., Cho, S., Rocca, R., Simonsen, A., Knox, A., Lyons, M., Liberman, M., Cieri, C., Schillinger, S., Lee, A. L., Hauptmann, A., Tena, K., Chatham, C., Miller, J. S., Pandey, J., Russell, A. S., Schultz, R. T., Parish-Morris,  J. (2024, submitted). Social Context Matters for Turn-Taking Dynamics: A Comparative Study of Autistic and Typically Developing Children. PsyArxiv: https://doi.org/10.31234/osf.io/zw3hj
+
+
+## Contact
+
+For questions about the analysis code, please refer to the corresponding author information in the paper.

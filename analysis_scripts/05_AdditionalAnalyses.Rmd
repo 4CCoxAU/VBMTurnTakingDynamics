@@ -1,0 +1,2774 @@
+---
+title: "06_controlmodels"
+output: html_document
+date: "2025-05-21"
+editor_options: 
+  chunk_output_type: console
+---
+
+# Control Analyses
+## Child Response Latencies, No Overlaps
+```{r, eval = F}
+d_no <- d %>% 
+  subset(Latency > 0) %>%
+  filter(InterTurn == "Child2Adult")
+
+Latency_f1 <- bf(
+  Latency ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit), 
+  sigma ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)),
+  beta ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis))  +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit))
+
+priorChild_no <- c(
+  prior(normal(0, 2), class = b, lb = 0),
+  prior(normal(0, 0.3), class = sd),
+  prior(normal(0, 1), class = b, dpar = beta),
+  prior(normal(0, 0.1), class = sd, dpar = beta),
+  prior(normal(0, 1), class = b, dpar = sigma),
+  prior(normal(0, 0.1), class = sd, dpar = sigma),
+  prior(lkj(2), class = cor)
+)
+
+ChildLatency_m1_no <- brm(
+    Latency_f1,
+    data = d_no,
+    family = exgaussian,
+    prior = priorChild_no,
+    sample_prior = T,
+    backend = "cmdstanr",
+    iter = 4000,
+    warmup = 500,
+    init = 0,
+    chains = 2,
+    cores = 64,
+    file = here("models","ChildLatency_m1_noJulyJuly"),
+    control = list(adapt_delta = 0.90, max_treedepth = 15),
+    stan_model_args = list(stanc_options = list("O1"))
+  )
+
+pp_check(ChildLatency_m1_no, ndraws = 100)
+```
+
+### Hypothesis Tests
+```{r}
+HypothesisResultsChildLatenciesModel1 <- extract_all_hypothesis_tests_m1_no_child(ChildLatency_m1_no)
+#write.csv(HypothesisResultsChildLatenciesModel1, here('VBMTurnTakingFiles/stats_for_paper/model1_childnooverlaps_stats_for_paper.csv'))
+```
+
+### Visualisation of Model Estimates
+```{r}
+newdata <- subset(d, InterTurn == "Child2Adult") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) 
+
+C2P_PredictedData <- as_tibble(predict(ChildLatency_m1_no, newdata = newdata)) %>%
+  mutate(Visit = newdata$Visit) %>%
+  mutate(Diagnosis = newdata$Diagnosis) %>%
+  mutate(ID = newdata$ID) %>%
+  mutate(Familiarity = newdata$Familiarity) %>%
+  mutate(Task = newdata$Task) %>%
+  mutate(size = Q97.5-Q2.5) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  group_by(Diagnosis, ID, Familiarity, Task) %>%
+  dplyr::summarise(Estimate = mean(Estimate)) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+Posterior_df <- as_draws_df(ChildLatency_m1_no)
+
+condition_posterior_TDC_MG <- Posterior_df[,"b_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "MatchingGame",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_ASD_MG <- Posterior_df[,"b_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "MatchingGame",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_TDC_Q_F <- Posterior_df[,"b_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "Questions",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_ASD_Q_F <- Posterior_df[,"b_DiagnosisASD:TaskQuestions:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "Questions",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskQuestions:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_TDC_Q_UF <- Posterior_df[,"b_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar"] %>%
+  mutate(Familiarity = "Unfamiliar",
+         Task = "Questions",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent"))) 
+
+condition_posterior_ASD_Q_UF <- Posterior_df[,"b_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar"] %>%
+  mutate(Familiarity = "Unfamiliar",
+         Task = "Questions",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+posteriors <- rbind(condition_posterior_ASD_MG, condition_posterior_TDC_MG,
+      condition_posterior_ASD_Q_F, condition_posterior_TDC_Q_F, 
+      condition_posterior_ASD_Q_UF, condition_posterior_TDC_Q_UF)
+
+Model1_Plot_Child_ConditionsNoOverlaps <- ggplot() +
+  geom_boxplot(aes(Condition, Estimate, color = Diagnosis, fill = Diagnosis), filter(posteriors, Diagnosis == "Autism Group"), width = 0.05, color = "black", position = position_nudge(x = -0.30), alpha = 0.9, outliers = F, show.legend = T) +
+  geom_boxplot(aes(Condition, Estimate, color = Diagnosis, fill = Diagnosis), filter(posteriors, Diagnosis == "Typical Development"), width = 0.05, color = "black", position = position_nudge(x = -0.10), alpha = 0.9, outliers = F, show.legend = T) +
+  geom_point(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#009E73", color = "#009E73", alpha = 0.7, data = filter(C2P_PredictedData, Diagnosis == "Autism Group"), size = 2, position = position_nudge(x = -.22)) + 
+  geom_point(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#CC79A7", color = "#CC79A7", alpha = 0.7, data = filter(C2P_PredictedData, Diagnosis == "Typical Development"), size = 2, position = position_nudge(x = -.18)) + 
+  geom_half_violin(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#009E73", color = "black", alpha = 0.9, data = filter(posteriors, Diagnosis == "Autism Group"), side = "r", position = position_nudge(x = 0), adjust = 1.7) +
+  geom_half_violin(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#CC79A7", color = "black", alpha = 0.9, data = filter(posteriors, Diagnosis == "Typical Development"), side = "r", position = position_nudge(x = 0), adjust = 1.7) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  xlab(' ') +
+  coord_flip() +
+  ylab('Average Child Response Latency (seconds)') +
+  guides(color = guide_legend(reverse=TRUE), fill = guide_legend(reverse=TRUE)) +
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 15, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(0.25, 0.92),
+        legend.key.size = unit(3, "lines"),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 15, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.border = element_blank())
+```
+
+## Adult Response Latencies, No Overlaps
+```{r, eval = F}
+d_no_adult <- d %>% 
+  subset(Latency > 0) %>%
+  filter(InterTurn == "Adult2Child")
+
+AdultLatency_m1_no <- brm(
+    Latency_f1,
+    d_no_adult,
+    family = exgaussian,
+    prior = priorChild_no,
+    sample_prior = T,
+    backend = "cmdstanr",
+    iter = 3000,
+    warmup = 500,
+    init = 0,
+    chains = 2,
+    cores = 64,
+    file = here("models", "AdultLatency_m1_no.rds"),
+    control = list(adapt_delta = 0.999, max_treedepth = 20),
+    stan_model_args = list(stanc_options = list("O1"))
+  )
+```
+
+### Hypothesis Tests
+```{r}
+HypothesisResultsAdultLatenciesModel1 <- extract_all_hypothesis_tests_m1_no_adult(AdultLatency_m1_no)
+
+#write.csv(HypothesisResultsAdultLatenciesModel1, here("VBMTurnTakingFiles", 'stats_for_paper/model1_adultnooverlaps_stats_for_paper.csv'))
+```
+
+### Visualisation of Model Estimates
+```{r}
+newdata <- subset(d, InterTurn == "Adult2Child") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) 
+
+C2P_PredictedData <- as_tibble(predict(AdultLatency_m1_no, newdata = newdata)) %>%
+  mutate(Visit = newdata$Visit) %>%
+  mutate(Diagnosis = newdata$Diagnosis) %>%
+  mutate(ID = newdata$ID) %>%
+  mutate(Familiarity = newdata$Familiarity) %>%
+  mutate(Task = newdata$Task) %>%
+  mutate(size = Q97.5-Q2.5) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  group_by(Diagnosis, ID, Familiarity, Task) %>%
+  dplyr::summarise(Estimate = mean(Estimate)) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+Posterior_df <- as_draws_df(AdultLatency_m1_no)
+
+condition_posterior_TDC_MG <- Posterior_df[,"b_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "MatchingGame",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_ASD_MG <- Posterior_df[,"b_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "MatchingGame",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_TDC_Q_F <- Posterior_df[,"b_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "Questions",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_ASD_Q_F <- Posterior_df[,"b_DiagnosisASD:TaskQuestions:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "Questions",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskQuestions:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_TDC_Q_UF <- Posterior_df[,"b_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar"] %>%
+  mutate(Familiarity = "Unfamiliar",
+         Task = "Questions",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent"))) 
+
+condition_posterior_ASD_Q_UF <- Posterior_df[,"b_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar"] %>%
+  mutate(Familiarity = "Unfamiliar",
+         Task = "Questions",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+posteriors <- rbind(condition_posterior_ASD_MG, condition_posterior_TDC_MG,
+      condition_posterior_ASD_Q_F, condition_posterior_TDC_Q_F, 
+      condition_posterior_ASD_Q_UF, condition_posterior_TDC_Q_UF)
+
+Model1_Plot_Adult_ConditionsNoOverlaps <- ggplot() +
+  geom_boxplot(aes(Condition, Estimate, color = Diagnosis, fill = Diagnosis), filter(posteriors, Diagnosis == "Autism Group"), width = 0.05, color = "black", position = position_nudge(x = -0.30), alpha = 0.9, outliers = F, show.legend = T) +
+  geom_boxplot(aes(Condition, Estimate, color = Diagnosis, fill = Diagnosis), filter(posteriors, Diagnosis == "Typical Development"), width = 0.05, color = "black", position = position_nudge(x = -0.10), alpha = 0.9, outliers = F, show.legend = T) +
+  geom_point(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#009E73", color = "#009E73", alpha = 0.7, data = filter(C2P_PredictedData, Diagnosis == "Autism Group"), size = 2, position = position_nudge(x = -.22)) + 
+  geom_point(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#CC79A7", color = "#CC79A7", alpha = 0.7, data = filter(C2P_PredictedData, Diagnosis == "Typical Development"), size = 2, position = position_nudge(x = -.18)) + 
+  geom_half_violin(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#009E73", color = "black", alpha = 0.9, data = filter(posteriors, Diagnosis == "Autism Group"), side = "r", position = position_nudge(x = 0), adjust = 1.7) +
+  geom_half_violin(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#CC79A7", color = "black", alpha = 0.9, data = filter(posteriors, Diagnosis == "Typical Development"), side = "r", position = position_nudge(x = 0), adjust = 1.7) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  xlab(' ') +
+  coord_flip() +
+  ylab('Average Adult Response Latency (seconds)') +
+  guides(color = guide_legend(reverse=TRUE), fill = guide_legend(reverse=TRUE)) +
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 15, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(0.25, 0.92),
+        legend.key.size = unit(3, "lines"),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 15, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.border = element_blank())
+Model1_Plot_Adult_ConditionsNoOverlaps
+
+```
+
+
+## Child Response Latencies, Gender
+```{r, eval = FALSE}
+Latency_f1_Gender <- bf(
+  Latency ~ 0 + Diagnosis:Task:Familiarity:Gender + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task:Gender | r | Visit), 
+  sigma ~ 0 + Diagnosis:Task:Familiarity:Gender + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task:Gender | r | Visit),
+  beta ~ 0 + Diagnosis:Task:Familiarity:Gender + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis))  +  
+    (0 + Diagnosis:Task:Gender | r | Visit))
+
+priorChild <- c(
+  prior(normal(1, 1), class = b),
+  prior(normal(0, 0.3), class = sd),
+  prior(normal(0, 1), class = b, dpar = beta),
+  prior(normal(0, 0.1), class = sd, dpar = beta),
+  prior(normal(0, 1), class = b, dpar = sigma),
+  prior(normal(0, 0.1), class = sd, dpar = sigma),
+  prior(lkj(2), class = cor)
+)
+
+d %>%
+  group_by(ID, Gender, Diagnosis) %>%
+  dplyr::summarise(n()) %>%
+  print(n = 50)
+
+ChildLatency_m1_Gender <- brm(
+    Latency_f1_Gender,
+    data = subset(d, InterTurn == "Child2Adult"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = T,
+    backend = "cmdstanr",
+    iter = 3000,
+    warmup = 500,
+    init = 0,
+    chains = 2,
+    cores = 64,
+    file = here("models","ChildLatency_m1_Gender"),
+    control = list(adapt_delta = 0.97, max_treedepth = 15),
+    stan_model_args = list(stanc_options = list("O1"))
+  )
+
+pp_check(ChildLatency_m1_Gender, ndraws = 100)
+```
+
+### Visualisation of Model Estimates
+```{r}
+newdata <- subset(d, InterTurn == "Child2Adult") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit, Gender) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) 
+
+C2P_PredictedData <- as_tibble(predict(ChildLatency_m1_Gender, newdata = newdata)) %>%
+  mutate(Visit = newdata$Visit) %>%
+  mutate(Diagnosis = newdata$Diagnosis) %>%
+  mutate(ID = newdata$ID) %>%
+  mutate(Familiarity = newdata$Familiarity) %>%
+  mutate(Task = newdata$Task) %>%
+  mutate(Gender = newdata$Gender) %>%
+  mutate(size = Q97.5-Q2.5) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  group_by(Diagnosis, ID, Familiarity, Task, Gender) %>%
+  dplyr::summarise(Estimate = mean(Estimate)) %>%
+  mutate(Gender = str_replace_all(Gender, "NonBinary", "Non-Binary"))
+
+Model1_Plot_Child_Gender <- ggplot(C2P_PredictedData, aes(Gender, Estimate, fill = Diagnosis, color = Diagnosis)) +
+  geom_rain(alpha = .5, boxplot.args = list(color = "black", outlier.shape = NA), rain.side = 'l') +
+  theme_classic() +
+  facet_wrap(~ Diagnosis) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7", "#f8f2bf")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7", "#f8f2bf")) +
+  ggtitle('Child Response Latency Estimates across Genders') +
+  xlab(' ') +
+  ylab('Child Response Latency (seconds)') +
+  guides(color = 'none', fill = guide_legend(title=" ")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        axis.text.y = element_text(size = 13, color = "black"),
+        axis.title.y = element_text(size = 13, color = "black"),
+        legend.title = element_blank(),
+        legend.position = "none",
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+Model1_Plot_Child_Gender
+```
+
+### Hypothesis Tests
+```{r}
+HypothesisResultsChildLatenciesModel1_Gender <- extract_all_hypothesis_tests_m1_child_gender(ChildLatency_m1_Gender)
+
+#write.csv(HypothesisResultsChildLatenciesModel1_Gender, here('VBMTurnTakingFiles/stats_for_paper/model1_child_gender_stats_for_paper.csv'))
+```
+
+## Child Response Latencies, without Sigma and Beta
+```{r, eval = FALSE}
+Latency_f1 <- bf(
+  Latency ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit))
+
+priorChild <- c(
+  prior(normal(1, 1), class = b),
+  prior(normal(0, 0.3), class = sd),
+  prior(normal(0, 1), class = beta),
+  prior(normal(0, 1), class = sigma),
+  prior(lkj(2), class = cor)
+)
+
+ChildLatency_m1_no_sigma_no_beta <- brm(
+    Latency_f1,
+    data = subset(d, InterTurn == "Child2Adult"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = T,
+    backend = "cmdstanr",
+    iter = 3000,
+    warmup = 500,
+    init = 0,
+    chains = 2,
+    cores = 64,
+    file = here("models","ChildLatency_m1_sigma_Visit_v1_finalJuly_no_sigma_no_beta"),
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+    stan_model_args = list(stanc_options = list("O1")))
+
+pp_check(ChildLatency_m1_no_sigma_no_beta, ndraws = 100)
+```
+
+### Hypothesis Tests
+```{r}
+HypothesisResultsChildLatenciesModel1 <- extract_all_hypothesis_tests_m1_nosigma_child(ChildLatency_m1_no_sigma_no_beta)
+
+#write.csv(HypothesisResultsChildLatenciesModel1, here('VBMTurnTakingFiles/stats_for_paper/model1_child_no_beta_no_sigma_stats_for_paper.csv'))
+```
+
+## Child Response Latencies, without Beta but With Sigma
+```{r, eval = FALSE}
+Latency_f1 <- bf(
+  Latency ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit), 
+  sigma ~ 0 + Diagnosis:Task:Familiarity + Diagnosis:Task:Familiarity:Visit +
+    (0 + Task:Familiarity:Visit | p | gr(ID, by = Diagnosis)))
+
+priorChild <- c(
+  prior(normal(1, 1), class = b),
+  prior(normal(0, 0.3), class = sd),
+  prior(normal(0, 1), class = beta),
+  prior(normal(0, 1), class = b, dpar = sigma),
+  prior(normal(0, 0.1), class = sd, dpar = sigma),
+  prior(lkj(2), class = cor)
+)
+
+ChildLatency_m1_no_beta_with_sigma <- brm(
+    Latency_f1,
+    data = subset(d, InterTurn == "Child2Adult"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = T,
+    backend = "cmdstanr",
+    iter = 3000,
+    warmup = 500,
+    init = 0,
+    chains = 2,
+    cores = 64,
+    file = here("models","ChildLatency_m1_sigma_Visit_v1_finalJulyJuly_no_beta"),
+    control = list(adapt_delta = 0.99, max_treedepth = 20),
+    stan_model_args = list(stanc_options = list("O1")))
+pp_check(ChildLatency_m1_no_beta_with_sigma, ndraws = 100)
+```
+
+### Hypothesis Tests
+```{r}
+HypothesisResultsChildLatenciesModel1 <- extract_all_hypothesis_tests_m1_nobetasigma_child(ChildLatency_m1_no_beta_with_sigma)
+
+#write.csv(HypothesisResultsChildLatenciesModel1, here('VBMTurnTakingFiles/stats_for_paper/model1_child_no_beta_with_sigma_stats_for_paper.csv'))
+```
+
+## Child Response Latencies, Individual Differences and No Overlaps
+```{r}
+d_no <- d %>% 
+  subset(Latency > 0) %>%
+  filter(InterTurn == "Child2Adult")
+
+Latency_ID_f1 <- bf(
+  Latency ~ 0 + Diagnosis:Task:Familiarity + 
+    Diagnosis:Task:Familiarity:LanguageS_scaled + 
+    Diagnosis:Task:Familiarity:AwarenessS_scaled + 
+    Diagnosis:Task:Familiarity:MotivationS_scaled + 
+    Diagnosis:Task:Familiarity:CognitionS_scaled + 
+    Diagnosis:Task:Familiarity:MotorS_scaled + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task | r | Visit), 
+  sigma ~ 0 + Diagnosis:Task:Familiarity +
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)),
+  beta ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis))  +  
+    (0 + Diagnosis:Task | r | Visit))
+
+priorChild_no <- c(
+  prior(normal(0, 2), class = b),
+  prior(normal(0, 0.3), class = sd),
+  prior(normal(0, 1), class = b, dpar = beta),
+  prior(normal(0, 0.1), class = sd, dpar = beta),
+  prior(normal(0, 1), class = b, dpar = sigma),
+  prior(normal(0, 0.1), class = sd, dpar = sigma),
+  prior(lkj(2), class = cor)
+)
+
+ChildLatency_m2_ID_NoOverlaps <- brm(
+    Latency_ID_f1,
+    data = d_no,
+    family = exgaussian,
+    prior = priorChild_no,
+    sample_prior = T,
+    backend = "cmdstanr",
+    iter = 3000,
+    warmup = 500,
+    init = 0,
+    chains = 2,
+    cores = 64,
+    file = here::here("models", "ChildLatency_m2_ID_NoOverlapsJulyJuly"),
+    control = list(adapt_delta = 0.95, max_treedepth = 15),
+    stan_model_args = list(stanc_options = list("O1"))
+  )
+```
+
+### Hypothesis Tests
+```{r}
+hypothesis_data_full <- extract_all_hypothesis_tests_m2_child(ChildLatency_m2_ID_NoOverlaps)
+
+#write.csv(hypothesis_data_full, here('VBMTurnTakingFiles', 'stats_for_paper/model2_child_no_overlaps_stats_for_paper.csv'))
+```
+
+### Visualisation of Model Estimates
+```{r}
+hypothesis_data_overall <- hypothesis_data_full[1:40, ] %>%
+  #filter(str_detect(value, "overall")) %>%
+  mutate(Parameter = sapply(strsplit(value, "_"), `[`,1)) %>%
+  mutate(Diagnosis = sapply(Parameter, function(x) substr(x, nchar(x) - 2, nchar(x)))) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Parameter = str_replace(Parameter, "ASD", "")) %>%
+  mutate(Parameter = str_replace(Parameter, "TDC", "")) %>%
+  mutate(Parameter = factor(Parameter, levels = c("Motivation", "Awareness", "Language", "Cognition", "Motor"))) %>%
+  mutate(Condition = sub(".*_(TG_F|Q_F|Q_UF)$", "\\1", value)) %>%
+  mutate(Condition = str_replace_all(Condition, 
+                                     c("MotorASD_overall" = "Overall", 
+                                       "MotorTDC_overall" = "Overall", 
+                                       "CognitionASD_overall" = "Overall", 
+                                       "CognitionTDC_overall" = "Overall", 
+                                       "LanguageASD_overall" = "Overall", 
+                                       "LanguageTDC_overall" = "Overall",
+                                       "AwarenessASD_overall" = "Overall", 
+                                       "AwarenessTDC_overall" = "Overall", 
+                                       "MotivationASD_overall" = "Overall", 
+                                       "MotivationTDC_overall" = "Overall"))) %>%
+  mutate(Condition = str_replace_all(Condition, 
+                                     c("TG_F" = "Matching With Parent", 
+                                       "Q_F" = "Convo With Parent", 
+                                       "Q_UF" = "Convo With Experimenter",
+                                       "Overall" = "Aggregated Estimate"))) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter", "Aggregated Estimate")))
+
+Posterior_df <- as_draws_df(ChildLatency_m2_ID_NoOverlaps)
+
+create_condition_posterior <- function(Posterior_df, Diagnosis, Task, Familiarity, Parameter) {
+  column_name <- paste0("b_Diagnosis", Diagnosis, ":Task", Task, ":Familiarity", Familiarity, ":", Parameter)
+  
+  condition_posterior <- Posterior_df[, column_name] %>%
+    mutate(Familiarity = Familiarity,
+           Task = Task,
+           Diagnosis = Diagnosis,
+           Parameter = Parameter) %>%
+    rename("Estimate" = !!sym(column_name)) %>%
+    mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+    mutate(Condition = case_when(
+      Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+      Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+      Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+    mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+  
+  return(condition_posterior)
+}
+
+Languagecondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "LanguageS_scaled")
+Languagecondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "LanguageS_scaled")
+Languagecondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "LanguageS_scaled")
+
+Languagecondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "LanguageS_scaled")
+Languagecondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "LanguageS_scaled")
+Languagecondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "LanguageS_scaled")
+
+Cognitioncondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "CognitionS_scaled")
+Cognitioncondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "CognitionS_scaled")
+Cognitioncondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "CognitionS_scaled")
+
+Cognitioncondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "CognitionS_scaled")
+Cognitioncondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "CognitionS_scaled")
+Cognitioncondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "CognitionS_scaled")
+
+Motorcondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "MotorS_scaled")
+Motorcondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "MotorS_scaled")
+Motorcondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "MotorS_scaled")
+
+Motorcondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "MotorS_scaled")
+Motorcondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "MotorS_scaled")
+Motorcondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "MotorS_scaled")
+
+Awarenesscondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "AwarenessS_scaled")
+Awarenesscondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "AwarenessS_scaled")
+Awarenesscondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "AwarenessS_scaled")
+
+Awarenesscondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "AwarenessS_scaled")
+Awarenesscondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "AwarenessS_scaled")
+Awarenesscondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "AwarenessS_scaled")
+
+Motivationcondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "MotivationS_scaled")
+Motivationcondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "MotivationS_scaled")
+Motivationcondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "MotivationS_scaled")
+
+Motivationcondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "MotivationS_scaled")
+Motivationcondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "MotivationS_scaled")
+Motivationcondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "MotivationS_scaled")
+
+full_posterior_predictions <- rbind(Languagecondition_posterior_TDC_MG, Languagecondition_posterior_TDC_Q_F, Languagecondition_posterior_TDC_Q_UF, 
+      Languagecondition_posterior_ASD_MG, Languagecondition_posterior_ASD_Q_F, Languagecondition_posterior_ASD_Q_UF,
+      
+      Motorcondition_posterior_TDC_MG, Motorcondition_posterior_TDC_Q_F, Motorcondition_posterior_TDC_Q_UF, 
+      Motorcondition_posterior_ASD_MG, Motorcondition_posterior_ASD_Q_F, Motorcondition_posterior_ASD_Q_UF,
+  
+      Awarenesscondition_posterior_TDC_MG, Awarenesscondition_posterior_TDC_Q_F, Awarenesscondition_posterior_TDC_Q_UF, 
+      Awarenesscondition_posterior_ASD_MG, Awarenesscondition_posterior_ASD_Q_F, Awarenesscondition_posterior_ASD_Q_UF,
+      
+      Cognitioncondition_posterior_TDC_MG, Cognitioncondition_posterior_TDC_Q_F, Cognitioncondition_posterior_TDC_Q_UF, 
+      Cognitioncondition_posterior_ASD_MG, Cognitioncondition_posterior_ASD_Q_F, Cognitioncondition_posterior_ASD_Q_UF,
+
+      Motivationcondition_posterior_TDC_MG, Motivationcondition_posterior_TDC_Q_F, Motivationcondition_posterior_TDC_Q_UF, 
+      Motivationcondition_posterior_ASD_MG, Motivationcondition_posterior_ASD_Q_F, Motivationcondition_posterior_ASD_Q_UF) %>%
+  mutate(Parameter = str_replace(Parameter, "S_scaled", "")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter", "Aggregated Estimate"))) %>%
+  mutate(Parameter = str_replace_all(Parameter, c("Motivation" = "Social Motivation",
+                                                  "Cognition" = "Social Cognition",
+                                                  "Awareness" = "Social Awareness"))) %>%
+  mutate(Parameter = factor(Parameter, levels = c("Motor", "Language", "Social Motivation", "Social Awareness", "Social Cognition")))
+  
+Model2_Plot_Child_Conditions_NoOverlaps <- ggplot() +
+  annotate("rect", xmin=-Inf, xmax = 1.47, ymin=-Inf, ymax=Inf, fill="honeydew4", color = "honeydew4", alpha = .3) +
+  annotate("rect", xmin=1.47, xmax = 2.48, ymin=-Inf, ymax=Inf, fill="honeydew3", color = "honeydew3", alpha = .3) +
+  annotate("rect", xmin=2.48, xmax = 3.49, ymin=-Inf, ymax=Inf, fill="honeydew4", color = "honeydew4", alpha = .3) +
+  annotate("rect", xmin=3.49, xmax = 4.5, ymin=-Inf, ymax=Inf, fill="honeydew3", color = "honeydew3", alpha = .3) +
+  annotate("rect", xmin= 4.5, xmax = Inf, ymin=-Inf, ymax=Inf, fill="honeydew4", color = "honeydew4", alpha = .3) +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_vline(xintercept = 2.48, linetype = 1, color = "black", linewidth = 1) +
+  geom_boxplot(aes(Parameter, Estimate, fill = Diagnosis, color = Diagnosis), data = filter(full_posterior_predictions, Diagnosis == "Autism Group"), position = position_nudge(x = -0.1), width = 0.05, color = "black", alpha = 0.9, outliers = F) +
+  geom_boxplot(aes(Parameter, Estimate, fill = Diagnosis, color = Diagnosis), data = filter(full_posterior_predictions, Diagnosis == "Typical Development"), position = position_nudge(x = -0.2), width = 0.05, color = "black", alpha = 0.9, outliers = F) +
+  geom_half_violin(aes(Parameter, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#009E73", color = "black", alpha = 0.9, data = filter(full_posterior_predictions, Diagnosis == "Autism Group"), side = "r", position = position_nudge(x = 0), adjust = 0.8) +
+  geom_half_violin(aes(Parameter, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#CC79A7", color = "black", alpha = 0.9, data = filter(full_posterior_predictions, Diagnosis == "Typical Development"), side = "r", position = position_nudge(x = 0), adjust = 0.8) +
+  facet_wrap(~Condition, nrow = 1) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  xlab(' ') +
+  coord_flip() +
+  ylab('Child Response Latency (seconds)') +
+  guides(color = "none", fill = guide_legend(reverse=TRUE)) +
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(0.05, 0.957),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(3, "lines"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"))
+
+Model2_Plot_Child_Conditions_NoOverlaps
+```
+
+
+## Child Overlapping according to Individual Differences
+```{r}
+d <- d %>% mutate(
+  overlapping = ifelse(Latency > 0, 0, 1),
+  overlapping_child = ifelse(SelfChild2 > 0, 0, 1),
+  overlapping_adult = ifelse(SelfAdult2 > 0, 0, 1)
+)
+
+overlap_data <- subset(d, InterTurn == "Child2Adult")
+
+Overlapping_f2 <- bf(
+  overlapping ~ 0 + Diagnosis:Task:Familiarity + 
+    Diagnosis:Task:Familiarity:LanguageS_scaled + 
+    Diagnosis:Task:Familiarity:AwarenessS_scaled + 
+    Diagnosis:Task:Familiarity:MotivationS_scaled + 
+    Diagnosis:Task:Familiarity:CognitionS_scaled + 
+    Diagnosis:Task:Familiarity:MotorS_scaled + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task | r | Visit))
+
+priorChild_overlapping <- c(
+  prior(normal(0, 1), class = b),
+  prior(normal(0, 0.3), class = sd),
+  prior(lkj(3), class = cor)
+)
+
+OverlappingChild_m2_IndividualDifferences <- brm(
+  Overlapping_f2,
+  subset(d, InterTurn == "Child2Adult"),
+  family = bernoulli(),
+  prior = priorChild_overlapping,
+  sample_prior = T,
+  file = here("models", "OverlappingChild_m2_IndividualDifferencesJuly"),
+  backend = "cmdstanr",
+  #threads = threading(2),
+  iter = 4000,
+  warmup = 500,
+  init = 0,
+  chains = 2,
+  cores = 64,
+  control = list(adapt_delta = 0.90, max_treedepth = 10),
+  stan_model_args = list(stanc_options = list("O1"))
+)
+
+pp_check(OverlappingChild_m2_IndividualDifferences, ndraws = 100)
+```
+
+## Visualisation of Model Estimates
+```{r}
+#Linguistic Skills
+newdata <- subset(d, InterTurn == "Child2Adult") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) %>%
+  mutate(AwarenessS_scaled = median(overlap_data$AwarenessS_scaled, na.rm = TRUE),
+         MotivationS_scaled = median(overlap_data$MotivationS_scaled, na.rm = TRUE),
+         CognitionS_scaled = median(overlap_data$CognitionS_scaled, na.rm = TRUE),
+         MotorS_scaled = median(overlap_data$MotorS_scaled, na.rm = TRUE))
+
+join_data <- expand.grid(ID = unique(overlap_data$ID), 
+                         LanguageS_scaled = seq(from = min(overlap_data$LanguageS_scaled, na.rm = TRUE), to = max(overlap_data$LanguageS_scaled, na.rm = TRUE), length.out = 10))
+
+newdatanew <- left_join(newdata, join_data, by = "ID", relationship = "many-to-many") %>%
+  filter(ID %in% unique(OverlappingChild_m2_IndividualDifferences$data$ID))
+
+# Predict probabilities
+predictions <- predict(object = OverlappingChild_m2_IndividualDifferences, newdata = newdatanew, allow_new_levels = TRUE, ndraws = 50)
+newdatanew$Probability <- predictions[, "Estimate"]
+
+# Combine the results
+results <- cbind(newdatanew, Probability = predictions[, "Estimate"]) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter"))) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development"))
+
+ProportionOverlapsLanguage <- results %>%
+  ggplot() +
+  geom_smooth(aes(x = LanguageS_scaled, y = Probability...11, color = Diagnosis, group = ID), 
+              method = "lm", linewidth = 0.15, alpha = 0.8, se = FALSE, show.legend = T) +
+  geom_smooth(aes(x = LanguageS_scaled, y = Probability...11, color = Diagnosis), linewidth = 2.5, se = F, method = "lm", show.legend = FALSE) +
+  #facet_wrap(~ Condition) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  guides(color = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1))) +
+  #ggtitle('Child Response Latency with Adult Utterance Predictability') +
+  ylab('Proportion of Overlaps') +
+  xlab('Linguistic Skills (scaled)')+
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        #legend.position = c(0.8, 0.9),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(3, "lines"),
+        legend.position = c(0.5, 0.8),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"))
+
+#Cognitive Skills
+newdata <- subset(d, InterTurn == "Child2Adult") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) %>%
+  mutate(AwarenessS_scaled = median(overlap_data$AwarenessS_scaled, na.rm = TRUE),
+         MotivationS_scaled = median(overlap_data$MotivationS_scaled, na.rm = TRUE),
+         LanguageS_scaled = median(overlap_data$LanguageS_scaled, na.rm = TRUE),
+         MotorS_scaled = median(overlap_data$MotorS_scaled, na.rm = TRUE)) %>%
+  filter(ID %in% unique(OverlappingChild_m2_IndividualDifferences$data$ID))
+
+join_data <- expand.grid(ID = unique(overlap_data$ID), 
+                         CognitionS_scaled = seq(from = min(overlap_data$CognitionS_scaled, na.rm = TRUE), to = max(overlap_data$CognitionS_scaled, na.rm = TRUE), length.out = 10))
+
+newdatanew <- left_join(newdata, join_data, by = "ID", relationship = "many-to-many")
+
+# Predict probabilities
+predictions <- fitted(OverlappingChild_m2_IndividualDifferences, newdata = newdatanew, allow_new_levels = TRUE, ndraws = 50)
+newdatanew$Probability <- predictions[, "Estimate"]
+
+# Combine the results
+results <- cbind(newdatanew, Probability = predictions[, "Estimate"]) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+ProportionOverlapsCognitiveSkills <- results %>%
+  ggplot() +
+  geom_smooth(aes(x = CognitionS_scaled, y = Probability...11, color = Diagnosis, group = ID), 
+              method = "lm", linewidth = 0.15, alpha = 0.8, se = FALSE, show.legend = T) +
+  geom_smooth(aes(x = CognitionS_scaled, y = Probability...11, color = Diagnosis), linewidth = 2.5, se = F, method = "lm", show.legend = FALSE) +
+  #facet_wrap(~ Condition) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  guides(color = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1))) +
+  #ggtitle('Child Response Latency with Adult Utterance Predictability') +
+  ylab('Proportion of Overlaps') +
+  xlab('Cognitive Skills (scaled)')+
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        #legend.position = c(0.8, 0.9),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(3, "lines"),
+        legend.position = "none",
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"))
+
+#Motor Skills
+newdata <- subset(d, InterTurn == "Child2Adult") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) %>%
+  mutate(AwarenessS_scaled = median(overlap_data$AwarenessS_scaled, na.rm = TRUE),
+         MotivationS_scaled = median(overlap_data$MotivationS_scaled, na.rm = TRUE),
+         LanguageS_scaled = median(overlap_data$LanguageS_scaled, na.rm = TRUE),
+         CognitionS_scaled = median(overlap_data$CognitionS_scaled, na.rm = TRUE)) %>%
+  filter(ID %in% unique(OverlappingChild_m2_IndividualDifferences$data$ID))
+
+join_data <- expand.grid(ID = unique(overlap_data$ID), 
+                         MotorS_scaled = seq(from = min(overlap_data$MotorS_scaled, na.rm = TRUE), to = max(overlap_data$MotorS_scaled, na.rm = TRUE), length.out = 10))
+
+newdatanew <- left_join(newdata, join_data, by = "ID", relationship = "many-to-many")
+
+# Predict probabilities
+predictions <- fitted(OverlappingChild_m2_IndividualDifferences, newdata = newdatanew, allow_new_levels = TRUE, ndraws = 50)
+newdatanew$Probability <- predictions[, "Estimate"]
+
+# Combine the results
+results <- cbind(newdatanew, Probability = predictions[, "Estimate"]) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+ProportionOverlapsMotorSkills <- results %>%
+  ggplot() +
+  geom_smooth(aes(x = MotorS_scaled, y = Probability...11, color = Diagnosis, group = ID), 
+              method = "lm", linewidth = 0.15, alpha = 0.4, se = FALSE, show.legend = T) +
+  geom_smooth(aes(x = MotorS_scaled, y = Probability...11, color = Diagnosis), linewidth = 2.5, se = F, method = "lm", show.legend = FALSE) +
+  #facet_wrap(~ Condition) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  guides(color = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1))) +
+  #ggtitle('Child Response Latency with Adult Utterance Predictability') +
+  ylab('Proportion of Overlaps') +
+  xlab('Motor Skills (scaled)')+
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        #legend.position = c(0.8, 0.9),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(3, "lines"),
+        legend.position = "none",
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"))
+
+#Social Awareness Skills
+newdata <- subset(d, InterTurn == "Child2Adult") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) %>%
+  mutate(MotorS_scaled = median(overlap_data$MotorS_scaled, na.rm = TRUE),
+         MotivationS_scaled = median(overlap_data$MotivationS_scaled, na.rm = TRUE),
+         LanguageS_scaled = median(overlap_data$LanguageS_scaled, na.rm = TRUE),
+         CognitionS_scaled = median(overlap_data$CognitionS_scaled, na.rm = TRUE)) %>%
+  filter(ID %in% unique(OverlappingChild_m2_IndividualDifferences$data$ID))
+
+join_data <- expand.grid(ID = unique(overlap_data$ID), 
+                         AwarenessS_scaled = seq(from = min(overlap_data$AwarenessS_scaled, na.rm = TRUE), to = max(overlap_data$AwarenessS_scaled, na.rm = TRUE), length.out = 10))
+
+newdatanew <- left_join(newdata, join_data, by = "ID", relationship = "many-to-many")
+
+# Predict probabilities
+predictions <- fitted(OverlappingChild_m2_IndividualDifferences, newdata = newdatanew, allow_new_levels = TRUE, ndraws = 50)
+newdatanew$Probability <- predictions[, "Estimate"]
+
+# Combine the results
+results <- cbind(newdatanew, Probability = predictions[, "Estimate"]) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+ProportionOverlapsAwarenessSkills <- results %>%
+  ggplot() +
+  geom_smooth(aes(x = AwarenessS_scaled, y = Probability...11, color = Diagnosis, group = ID), 
+              method = "lm", linewidth = 0.15, alpha = 0.4, se = FALSE, show.legend = T) +
+  geom_smooth(aes(x = AwarenessS_scaled, y = Probability...11, color = Diagnosis), linewidth = 2.5, se = F, method = "lm", show.legend = FALSE) +
+  #facet_wrap(~ Condition) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  guides(color = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1))) +
+  #ggtitle('Child Response Latency with Adult Utterance Predictability') +
+  ylab('Proportion of Overlaps') +
+  xlab('Awareness Skills (scaled)')+
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        #legend.position = c(0.8, 0.9),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(3, "lines"),
+        legend.position = "none",
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"))
+
+#Social Motivation Skills
+newdata <- subset(d, InterTurn == "Child2Adult") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) %>%
+  mutate(MotorS_scaled = median(overlap_data$MotorS_scaled, na.rm = TRUE),
+         AwarenessS_scaled = median(overlap_data$AwarenessS_scaled, na.rm = TRUE),
+         LanguageS_scaled = median(overlap_data$LanguageS_scaled, na.rm = TRUE),
+         CognitionS_scaled = median(overlap_data$CognitionS_scaled, na.rm = TRUE)) %>%
+  filter(ID %in% unique(OverlappingChild_m2_IndividualDifferences$data$ID))
+
+join_data <- expand.grid(ID = unique(overlap_data$ID), 
+                         MotivationS_scaled = seq(from = min(overlap_data$MotivationS_scaled, na.rm = TRUE), to = max(overlap_data$MotivationS_scaled, na.rm = TRUE), length.out = 10))
+
+newdatanew <- left_join(newdata, join_data, by = "ID", relationship = "many-to-many")
+
+# Predict probabilities
+predictions <- fitted(OverlappingChild_m2_IndividualDifferences, newdata = newdatanew, allow_new_levels = TRUE, ndraws = 50)
+newdatanew$Probability <- predictions[, "Estimate"]
+
+# Combine the results
+results <- cbind(newdatanew, Probability = predictions[, "Estimate"]) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+ProportionOverlapsMotivationSkills <- results %>%
+  ggplot() +
+  geom_smooth(aes(x = MotivationS_scaled, y = Probability...11, color = Diagnosis, group = ID), 
+              method = "lm", linewidth = 0.15, alpha = 0.4, se = FALSE, show.legend = T) +
+  geom_smooth(aes(x = MotivationS_scaled, y = Probability...11, color = Diagnosis), linewidth = 2.5, se = F, method = "lm", show.legend = FALSE) +
+  #facet_wrap(~ Condition) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  guides(color = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1))) +
+  #ggtitle('Child Response Latency with Adult Utterance Predictability') +
+  ylab('Proportion of Overlaps') +
+  xlab('Motivation Skills (scaled)')+
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        #legend.position = c(0.8, 0.9),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(3, "lines"),
+        legend.position = "none",
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"))
+
+Model2_OverlapsIndividualDifferences <- cowplot::plot_grid(ProportionOverlapsMotorSkills, ProportionOverlapsCognitiveSkills, ProportionOverlapsLanguage, ProportionOverlapsAwarenessSkills, ProportionOverlapsMotivationSkills, nrow = 3)
+Model2_OverlapsIndividualDifferences
+```
+
+## Hypothesis Tests
+```{r}
+HypothesisResultsChildOverlaps <- extract_all_hypothesis_tests_m2_overlaps_child(OverlappingChild_m2_IndividualDifferences)
+
+#write.csv(HypothesisResultsChildOverlaps, 'stats_for_paper/bernoulli_overlaps_IndividualDifferences_stats_for_paper.csv')
+```
+
+## Predictability Without Short Utterances
+```{r}
+contains_more_than_three_words <- d %>%
+  mutate(Transcript = tolower(Transcript)) %>%
+  mutate(Transcript = gsub("[[:punct:]]", "", Transcript)) %>%
+  rowwise() %>%
+  filter(length(str_split(Transcript, "\\s+")[[1]]) > 3) %>%
+  subset(InterTurn == "Child2Adult")
+
+Latency_ID_pred_f1 <- bf(
+  Latency ~ 0 + Diagnosis:Task:Familiarity + 
+    Diagnosis:Task:Familiarity:LanguageS_scaled + 
+    Diagnosis:Task:Familiarity:LanguageS_scaled:OwnPredictability +
+    Diagnosis:Task:Familiarity:LanguageS_scaled:OtherPredictability + 
+    Diagnosis:Task:Familiarity:OwnPredictability +
+    Diagnosis:Task:Familiarity:OtherPredictability + 
+    Diagnosis:Task:Familiarity:AwarenessS_scaled + 
+    Diagnosis:Task:Familiarity:MotivationS_scaled + 
+    Diagnosis:Task:Familiarity:CognitionS_scaled + 
+    Diagnosis:Task:Familiarity:MotorS_scaled + 
+    (0 + Task:Familiarity + Task:Familiarity:OtherPredictability | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit), 
+  sigma ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit),
+  beta ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis))  +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit))
+
+priorChild <- c(
+  prior(normal(1, 1), class = b),
+  prior(normal(0, 0.3), class = sd),
+  prior(normal(0, 1), class = b, dpar = beta),
+  prior(normal(0, 0.1), class = sd, dpar = beta),
+  prior(normal(0, 1), class = b, dpar = sigma),
+  prior(normal(0, 0.1), class = sd, dpar = sigma),
+  prior(lkj(2), class = cor)
+)
+
+ChildLatency_pred_m3_morethanthreewords <- brm(
+    Latency_ID_pred_f1,
+    data = contains_more_than_three_words,
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = T,
+    backend = "cmdstanr",
+    #threads = threading(2),
+    iter = 3000,
+    warmup = 500,
+    init = 0,
+    chains = 2,
+    cores = 64,
+    file = here::here("models","ChildLatency_pred_m3_morethanthreewords"),
+    control = list(adapt_delta = 0.90, max_treedepth = 15),
+    #stan_model_args = list(stanc_options = list("O1"))
+  )
+pp_check(ChildLatency_ID_pred_m1_backchannel_test, ndraws = 100)
+```
+
+### Hypothesis Tests
+```{r}
+PredictabilityComparisonsHypothesesFull <- extract_all_hypothesis_tests_m3_shortutterances(ChildLatency_pred_m3_morethanthreewords)
+
+#write.csv(PredictabilityComparisonsHypothesesFull, 'stats_for_paper/model3_Child_Predictability_morethanthreewords_stats_for_paper.csv')
+```
+
+### Visualisation of Model Estimates, Other Predictability
+```{r}
+d_pred_newdata <- contains_more_than_three_words %>%
+  group_by(ID, Task, Familiarity, Diagnosis, Visit) %>%
+  data_grid(OtherPredictability = seq_range(contains_more_than_three_words$OtherPredictability, n = 25)) %>%
+  mutate(LanguageS_scaled = mean(contains_more_than_three_words$LanguageS_scaled, na.rm = T)) %>%
+  mutate(OwnPredictability = mean(contains_more_than_three_words$OwnPredictability, na.rm = T)) %>%
+  mutate(AwarenessS_scaled = mean(contains_more_than_three_words$AwarenessS_scaled, na.rm = T)) %>%
+  mutate(MotivationS_scaled = mean(contains_more_than_three_words$MotivationS_scaled, na.rm = T)) %>%
+  mutate(CognitionS_scaled = mean(contains_more_than_three_words$CognitionS_scaled, na.rm = T)) %>%
+  mutate(MotorS_scaled = mean(contains_more_than_three_words$MotorS_scaled, na.rm = T)) %>%
+  filter(ID %in% unique(ChildLatency_pred_m3_morethanthreewords$data$ID))
+  
+pred_data <- add_predicted_draws(object = ChildLatency_pred_m3_morethanthreewords, 
+                newdata = d_pred_newdata, allow_new_levels = T,
+                value = ".prediction", ndraws = 50)
+
+OtherPredictabilityPlotData <- pred_data %>%
+  group_by(ID, Task, Familiarity, Diagnosis, OtherPredictability) %>%
+  dplyr::summarise(mean = mean(.prediction)) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+OtherPredictabilityPlotMoreThanThreeWords <- OtherPredictabilityPlotData %>%
+  ggplot() +
+  geom_smooth(aes(x = OtherPredictability, y = mean, color = Diagnosis, group = ID), 
+              method = "lm", linewidth = 0.15, alpha = 0.6, se = FALSE, show.legend = T) +
+  geom_smooth(aes(x = OtherPredictability, y = mean, color = Diagnosis), linewidth = 2.5, method = "lm", se = FALSE, show.legend = FALSE) +
+  facet_wrap(~ Condition) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  guides(color = guide_legend(reverse=TRUE, override.aes = list(alpha = 1, linewidth = 3))) +
+  scale_y_continuous(limits = c(-0.5, 2), breaks = c(-1, -0.5, 0, 0.5, 1, 1.5, 2)) +
+  scale_x_continuous(limits = c(-2.5, 2.5), breaks = c(-2, -1, 0, 1, 2)) +
+  #ggtitle('Child Response Latency with Adult Utterance Predictability') +
+  ylab('Child Response Latency (seconds)') +
+  xlab('Predictability of Previous Adult Utterance (z-score)') +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_blank(),
+        axis.ticks = element_blank(),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_blank(),
+        legend.title = element_blank(),
+        #axis.line.y =  element_blank(),
+        legend.position = c(0.3, 0.9),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(2, "lines"),
+        #axis.line.x =  element_blank(),
+        panel.border = element_blank(),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"))
+
+OtherPredictabilityPlotMoreThanThreeWords
+```
+
+### Visualisation of Model Estimates, Own Predictability
+```{r}
+d_pred_newdata <- contains_more_than_three_words %>%
+  group_by(ID, Task, Familiarity, Diagnosis, Visit) %>%
+  data_grid(OwnPredictability = seq_range(contains_more_than_three_words$OwnPredictability, n = 25)) %>%
+  mutate(LanguageS_scaled = mean(contains_more_than_three_words$LanguageS_scaled, na.rm = T)) %>%
+  mutate(OtherPredictability = mean(contains_more_than_three_words$OtherPredictability, na.rm = T)) %>%
+  mutate(AwarenessS_scaled = mean(contains_more_than_three_words$AwarenessS_scaled, na.rm = T)) %>%
+  mutate(MotivationS_scaled = mean(contains_more_than_three_words$MotivationS_scaled, na.rm = T)) %>%
+  mutate(CognitionS_scaled = mean(contains_more_than_three_words$CognitionS_scaled, na.rm = T)) %>%
+  mutate(MotorS_scaled = mean(contains_more_than_three_words$MotorS_scaled, na.rm = T)) %>%
+  filter(ID %in% unique(ChildLatency_pred_m3_morethanthreewords$data$ID))
+  
+pred_data <- add_predicted_draws(object = ChildLatency_pred_m3_morethanthreewords, 
+                newdata = d_pred_newdata, allow_new_levels = T,
+                value = ".prediction", ndraws = 50)
+
+PredictabilityPlotData <- pred_data %>%
+  group_by(ID, Task, Familiarity, Diagnosis, OwnPredictability) %>%
+  dplyr::summarise(mean = mean(.prediction)) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+OwnPredictabilityPlotMoreThanThreeWords <- PredictabilityPlotData %>%
+  ggplot() +
+  geom_smooth(aes(x = OwnPredictability, y = mean, color = Diagnosis, group = ID), 
+              method = "lm", linewidth = 0.15, alpha = 0.6, se = FALSE, show.legend = T) +
+  geom_smooth(aes(x = OwnPredictability, y = mean, color = Diagnosis), linewidth = 2.5, method = "lm", se = FALSE, show.legend = FALSE) +
+  facet_wrap(~ Condition) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  guides(color = guide_legend(reverse=TRUE, override.aes = list(alpha = 1, linewidth = 3))) +
+  scale_y_continuous(limits = c(-0.5, 2), breaks = c(-1, -0.5, 0, 0.5, 1, 1.5, 2)) +
+  scale_x_continuous(limits = c(-2.5, 2.5), breaks = c(-2, -1, 0, 1, 2)) +
+  #ggtitle('Child Response Latency with Adult Utterance Predictability') +
+  ylab('Child Response Latency (seconds)') +
+  xlab('Predictability of Previous Own Utterance (z-score)') +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.title.y = element_blank(),  # Remove y axis title
+        #axis.text.y = element_blank(),   # Remove y axis text
+        axis.ticks.y = element_blank(),   # Remove y axis ticks
+        axis.text.y = element_text(size = 20, color = "black"),
+        #axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        legend.position = "none",
+        #legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        #legend.key.size = unit(3, "lines"),
+        panel.border = element_blank(),
+        legend.text = element_text(size = 20),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_blank())
+
+OwnPredictabilityPlotMoreThanThreeWords
+
+
+# Combine plots with plot_grid
+combined_plot <- plot_grid(
+  OtherPredictabilityPlotMoreThanThreeWords, OwnPredictabilityPlotMoreThanThreeWords,
+  ncol = 1,                 # Stack plots vertically
+  align = 'v',              # Align plots vertically
+  axis = 'l',              # Align plots on the left edge
+  rel_heights = c(1, 1)    # Equal heights for both plots
+)
+
+# Combine the plots
+combined_plot <- plot_grid(
+  OtherPredictabilityPlotMoreThanThreeWords, OwnPredictabilityPlotMoreThanThreeWords,
+  ncol = 1,
+  align = 'v',
+  axis = 'l',
+  rel_heights = c(1, 1)
+)
+
+# Create the final plot with adjusted y-axis label
+OwnOtherPredictabilityMoreThanThreeWords <- ggdraw(clip = "off") +  # Important: turn off clipping
+  draw_plot(combined_plot, x = 0.01) +  # Shift plot right to make room for label
+  draw_text(
+    "Child Response Latency (seconds)",
+    x = 0.01,                    # Move label more to the left
+    y = 0.5,                     # Center vertically
+    angle = 90,                  # Rotate text
+    vjust = 0.5,                 # Center the text on its position
+    size = 20                    # Adjust text size if needed
+  )
+OwnOtherPredictabilityMoreThanThreeWords
+```
+
+## Increasing Familiarity across Visits
+```{r}
+newdata <- subset(d, InterTurn == "Child2Adult") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) 
+
+C2P_PredictedData <- as_tibble(predict(ChildLatency_m1, newdata = newdata)) %>%
+  mutate(Visit = newdata$Visit) %>%
+  mutate(Diagnosis = newdata$Diagnosis) %>%
+  mutate(ID = newdata$ID) %>%
+  mutate(Familiarity = newdata$Familiarity) %>%
+  mutate(Task = newdata$Task) %>%
+  mutate(size = Q97.5-Q2.5) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  group_by(Diagnosis, ID, Familiarity, Task, Visit) %>%
+  dplyr::summarise(Estimate = mean(Estimate)) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent"))) %>%
+  mutate(Visit = jitter(Visit, amount = 0.2))
+
+C2P_Change_In_FamiliarityPlot <- ggplot(C2P_PredictedData) +
+  #geom_rect(aes(xmin=-Inf, xmax = 1.47, ymin=-Inf, ymax=Inf), fill = "honeydew4", alpha = 0.3) +
+  #geom_rect(aes(xmin=1.47, xmax = 2.48, ymin=-Inf, ymax=Inf), fill = "honeydew3", alpha = 0.3) +
+  #geom_rect(aes(xmin=2.48, xmax = 3.6, ymin=-Inf, ymax=Inf), fill = "honeydew4", alpha = 0.3) +
+  geom_point(aes(x = Visit, y = Estimate, fill = Diagnosis, color = Diagnosis), alpha = 0.5, data = C2P_PredictedData, size = 2, show.legend = FALSE) + 
+  geom_smooth(aes(x = Visit, y = Estimate, fill = Diagnosis, color = Diagnosis), alpha = 0.5, data = C2P_PredictedData, method = 'lm') +
+  scale_x_continuous(breaks = seq(1, 7, 1), limits = c(1, 7)) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7", "darkgreen")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7", "darkgreen")) +
+  xlab('Visit') +
+  facet_wrap(~Condition) +
+  ylab('Child Response Latency (seconds)') +
+  guides(color = guide_legend(reverse=FALSE), fill = guide_legend(show = FALSE)) +
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(0.5, 0.91),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+C2P_Change_In_FamiliarityPlot
+
+newdata <- subset(d, InterTurn == "Adult2Child") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) 
+
+P2C_PredictedData <- as_tibble(predict(AdultLatency_m1, newdata = newdata)) %>%
+  mutate(Visit = newdata$Visit) %>%
+  mutate(Diagnosis = newdata$Diagnosis) %>%
+  mutate(ID = newdata$ID) %>%
+  mutate(Familiarity = newdata$Familiarity) %>%
+  mutate(Task = newdata$Task) %>%
+  mutate(size = Q97.5-Q2.5) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  group_by(Diagnosis, ID, Familiarity, Task, Visit) %>%
+  dplyr::summarise(Estimate = mean(Estimate)) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent"))) %>%
+  mutate(Visit = jitter(Visit, amount = 0.2))
+
+P2C_Change_In_FamiliarityPlot <- ggplot(P2C_PredictedData) +
+  #geom_rect(aes(xmin=-Inf, xmax = 1.47, ymin=-Inf, ymax=Inf), fill = "honeydew4", alpha = 0.3) +
+  #geom_rect(aes(xmin=1.47, xmax = 2.48, ymin=-Inf, ymax=Inf), fill = "honeydew3", alpha = 0.3) +
+  #geom_rect(aes(xmin=2.48, xmax = 3.6, ymin=-Inf, ymax=Inf), fill = "honeydew4", alpha = 0.3) +
+  geom_point(aes(x = Visit, y = Estimate, fill = Diagnosis, color = Diagnosis), alpha = 0.5, data = P2C_PredictedData, size = 2, show.legend = FALSE) + 
+  geom_smooth(aes(x = Visit, y = Estimate, fill = Diagnosis, color = Diagnosis), alpha = 0.5, data = P2C_PredictedData, method = 'lm') +
+  scale_x_continuous(breaks = seq(1, 7, 1), limits = c(1, 7)) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7", "darkgreen")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7", "darkgreen")) +
+  xlab('Visit') +
+  facet_wrap(~Condition) +
+  ylab('Adult Response Latency (seconds)') +
+  guides(color = guide_legend(reverse=FALSE), fill = guide_legend(show = FALSE)) +
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(0.5, 0.91),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+P2C_Change_In_FamiliarityPlot
+```
+
+## Surrogate Pairs
+```{r}
+# Separate the data into adult and child turns
+adults <- d %>% filter(InterTurn == "Adult2Child")
+children <- d %>% filter(InterTurn == "Child2Adult")
+
+# Split data by ID
+adult_list <- split(adults, adults$ID)
+child_list <- split(children, children$ID)
+
+# Function to calculate latency between turns and filter based on speaker changes
+calculate_latency_and_filter <- function(df) {
+  df <- df %>%
+    arrange(StartTime) %>%
+    mutate(PrevSpeaker = lag(Speaker),
+           NextSpeaker = lead(Speaker)) %>%
+    filter((Speaker == "Adult" & PrevSpeaker == "Child") |
+           (Speaker == "Child" & PrevSpeaker == "Adult")) %>%
+    mutate(Latency = StartTime - lag(EndTime))
+  
+  return(df)
+}
+
+# Create a function to shuffle adult IDs and match them with child IDs
+create_surrogate_pairs <- function(child_list, adult_list) {
+  child_ids <- names(child_list)
+  adult_ids <- names(adult_list)
+  
+  # Shuffle the adult IDs to create surrogate pairings
+  set.seed(10)  # Set seed for reproducibility
+  shuffled_adult_ids <- sample(adult_ids)
+  
+  # Ensure there are no self-pairings
+  while(any(child_ids == shuffled_adult_ids)) {
+    shuffled_adult_ids <- sample(adult_ids)
+  }
+  
+  surrogate_pairs <- list()
+  
+  for (i in seq_along(child_ids)) {
+    child_id <- child_ids[i]
+    surrogate_adult_id <- shuffled_adult_ids[i]
+    
+    child_data <- child_list[[child_id]]
+    surrogate_adult_data <- adult_list[[surrogate_adult_id]]
+    
+    # Combine the child data with the surrogate adult data
+    
+    combined_data <- rbind(child_data, surrogate_adult_data) %>%
+      calculate_latency_and_filter()
+    
+    surrogate_pairs[[child_id]] <- combined_data
+  }
+  
+  # Combine all pairs into one dataframe
+  surrogate_dataset <- bind_rows(surrogate_pairs)
+  return(surrogate_dataset)
+}
+
+# Create surrogate pairs
+surrogate_dataset <- create_surrogate_pairs(child_list, adult_list) %>%
+  filter(!is.na(Latency))
+
+range(surrogate_dataset$Latency)
+mean(surrogate_dataset$Latency)
+
+ggplot(surrogate_dataset) +
+  geom_density(aes(x = Latency, fill = InterTurn)) +
+  theme_bw()
+
+# View the surrogate dataset
+print(surrogate_dataset)
+```
+
+### Build Surrogate Model
+```{r, eval = FALSE}
+Latency_f1 <- bf(
+  Latency ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit), 
+  sigma ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit))
+
+priorChild <- c(
+  prior(normal(0, 5), class = b),
+  prior(normal(0, 10), class = sd),
+  prior(normal(0, 10), class = b, dpar = sigma),
+  prior(normal(0, 10), class = sd, dpar = sigma),
+  prior(lkj(2), class = cor)
+)
+
+ChildLatency_m1_surrogate <- brm(
+    Latency_f1,
+    data = subset(surrogate_dataset, InterTurn == "Child2Adult"),
+    family = gaussian,
+    prior = priorChild,
+    sample_prior = T,
+    backend = "cmdstanr",
+    iter = 3000,
+    warmup = 500,
+    init = 0,
+    chains = 2,
+    cores = 64,
+    file = here("models","ChildLatency_m1_surrogateNew"),
+    control = list(adapt_delta = 0.999, max_treedepth = 20),
+    stan_model_args = list(stanc_options = list("O1")))
+
+pp_check(ChildLatency_m1_surrogate, ndraws = 100)
+```
+
+### Hypothesis Tests
+```{r}
+HypothesisResultsChildLatenciesModel1 <- extract_all_hypothesis_tests_m1_surrogate(ChildLatency_m1_surrogate)
+
+#write.csv(HypothesisResultsChildLatenciesModel1, here('VBMTurnTakingFiles/stats_for_paper/Model1_childsurrogate_stats_for_paper.csv'))
+```
+
+### Visualisation of Model Estimates
+```{r}
+newdata <- subset(d, InterTurn == "Child2Adult") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) 
+
+C2P_PredictedData <- as_tibble(predict(ChildLatency_m1_surrogate, newdata = newdata)) %>%
+  mutate(Visit = newdata$Visit) %>%
+  mutate(Diagnosis = newdata$Diagnosis) %>%
+  mutate(ID = newdata$ID) %>%
+  mutate(Familiarity = newdata$Familiarity) %>%
+  mutate(Task = newdata$Task) %>%
+  mutate(size = Q97.5-Q2.5) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  group_by(Diagnosis, ID, Familiarity, Task) %>%
+  dplyr::summarise(Estimate = mean(Estimate)) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+Posterior_df <- as_draws_df(ChildLatency_m1_surrogate)
+
+condition_posterior_TDC_MG <- Posterior_df[,"b_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "MatchingGame",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_ASD_MG <- Posterior_df[,"b_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "MatchingGame",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_TDC_Q_F <- Posterior_df[,"b_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "Questions",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_ASD_Q_F <- Posterior_df[,"b_DiagnosisASD:TaskQuestions:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "Questions",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskQuestions:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_TDC_Q_UF <- Posterior_df[,"b_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar"] %>%
+  mutate(Familiarity = "Unfamiliar",
+         Task = "Questions",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent"))) 
+
+condition_posterior_ASD_Q_UF <- Posterior_df[,"b_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar"] %>%
+  mutate(Familiarity = "Unfamiliar",
+         Task = "Questions",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+posteriors <- rbind(condition_posterior_ASD_MG, condition_posterior_TDC_MG,
+      condition_posterior_ASD_Q_F, condition_posterior_TDC_Q_F, 
+      condition_posterior_ASD_Q_UF, condition_posterior_TDC_Q_UF)
+
+Model1_Plot_Child_ConditionsSurrogate <- ggplot() +
+  geom_boxplot(aes(Condition, Estimate, color = Diagnosis, fill = Diagnosis), filter(posteriors, Diagnosis == "Autism Group"), width = 0.05, color = "black", position = position_nudge(x = -0.30), alpha = 0.9, outliers = F, show.legend = T) +
+  geom_boxplot(aes(Condition, Estimate, color = Diagnosis, fill = Diagnosis), filter(posteriors, Diagnosis == "Typical Development"), width = 0.05, color = "black", position = position_nudge(x = -0.10), alpha = 0.9, outliers = F, show.legend = T) +
+  geom_point(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#009E73", color = "#009E73", alpha = 0.7, data = filter(C2P_PredictedData, Diagnosis == "Autism Group"), size = 2, position = position_nudge(x = -.22)) + 
+  geom_point(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#CC79A7", color = "#CC79A7", alpha = 0.7, data = filter(C2P_PredictedData, Diagnosis == "Typical Development"), size = 2, position = position_nudge(x = -.18)) + 
+  geom_half_violin(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#009E73", color = "black", alpha = 0.9, data = filter(posteriors, Diagnosis == "Autism Group"), side = "r", position = position_nudge(x = 0), adjust = 1.7) +
+  geom_half_violin(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#CC79A7", color = "black", alpha = 0.9, data = filter(posteriors, Diagnosis == "Typical Development"), side = "r", position = position_nudge(x = 0), adjust = 1.7) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  xlab(' ') +
+  coord_flip() +
+  ylab('Average Child Response Latency (seconds)') +
+  guides(color = guide_legend(reverse=TRUE), fill = guide_legend(reverse=TRUE)) +
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 15, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(0.25, 0.92),
+        legend.key.size = unit(3, "lines"),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 15, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.border = element_blank())
+Model1_Plot_Child_ConditionsSurrogate
+
+```
+
+
+
+
+# Timecode Reliability Analysis
+
+## Read in Data
+
+```{r}
+file_path <- '/work/VBMTurnTaking/Dual-Transcribed Transcripts'
+
+txt_files <- list.files(path = file_path, pattern = "\\.txt$", full.names = TRUE)
+
+file_list <- list()
+
+for (i in seq_along(txt_files)) {
+  file_name <- basename(txt_files[i])
+  file_content <- read.delim(txt_files[i], header = FALSE, stringsAsFactors = FALSE)
+  file_content$file_name <- file_name
+  file_list[[i]] <- file_content
+}
+
+paired_d_timecodes <- do.call(rbind, file_list) %>%
+  mutate(file_name = str_replace(file_name, ".txt", ".wav")) %>%
+  rename("filename" = V1,
+         "StartTime" = V2,
+         "EndTime" = V3,
+         "Transcript" = V4,
+         "Speaker" = V5,
+         "Task" = V6) %>%
+  filter(Task %in% unique(d$Task)) %>%
+  mutate(date = str_sub(file_name, 1, 8)) %>%
+  mutate(Speaker = str_replace_all(Speaker, " CAR Staff", "CAR Staff")) %>%
+  mutate(Speaker = str_replace_all(Speaker, "Car Staff", "CAR Staff")) %>%
+  mutate(Speaker = str_replace_all(Speaker, "Adult ", "Adult")) %>%
+  mutate(Speaker = str_replace_all(Speaker, "Child ", "Child")) %>%
+  mutate(Speaker = str_replace_all(Speaker, "CAR Staff", "Adult")) %>%
+  mutate(Speaker = str_replace_all(Speaker, "Parent", "Adult")) %>%
+  mutate(ID = str_replace(sapply(strsplit(file_name, "_"), `[`,3), "PIN", ""))
+  
+paired_d_timecodes %>%
+  group_by(Speaker) %>%
+  dplyr::summarise(n = n())
+```
+
+## Change utterance structures for paired data so they fit with first transcript
+
+```{r}
+collapsed_data <- paired_d_timecodes %>% 
+  group_by(filename, ID, Task) %>%
+  arrange(StartTime, .by_group = TRUE) %>%
+  mutate(
+    # A new turn starts when the speaker changes
+    new_turn = (Speaker != lag(Speaker, default = "first_speaker")),
+    turn_group = cumsum(new_turn)
+  ) %>%
+  group_by(filename, ID, Task, turn_group) %>%
+  summarize(
+    StartTime = first(StartTime),
+    EndTime = last(EndTime),
+    Transcript = paste(Transcript, collapse = " "),
+    Speaker = first(Speaker),
+    filename = first(filename),
+    .groups = "drop"
+  ) %>%
+  select(-turn_group) %>%
+  filter(Speaker == "Child")
+
+nrow(collapsed_data)
+colnames(collapsed_data)
+
+d_subpaired <- d %>%
+  filter(File %in% collapsed_data$filename) %>%
+  group_by(File, ID, Visit, Task) %>%
+  arrange(StartTime, .by_group = TRUE) %>%
+  tibble() %>%
+  dplyr::select(c("File", "ID", "Task", "StartTime", "EndTime", "Transcript", "Speaker", "Familiarity")) %>%
+  rename("filename" = File) %>%
+  filter(Speaker == "Child")
+
+# Make sure ID is the same type in both datasets
+d_subpaired$ID <- as.character(d_subpaired$ID)
+collapsed_data$ID <- as.character(collapsed_data$ID)
+
+# Get unique conversation identifiers
+conversations <- d_subpaired %>%
+  select(filename, ID, Task) %>%
+  distinct()
+
+# Create empty data frame for results
+results_df <- data.frame(
+  file = character(),
+  id = character(),
+  task = character(),
+  kappa = numeric(),
+  agreement = numeric(),
+  duration = numeric(),
+  min_time = numeric(),
+  max_time = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Process each conversation
+for (i in 1:nrow(conversations)) {
+  # Extract current conversation info
+  current_file <- conversations$filename[i]
+  current_id <- conversations$ID[i]
+  current_task <- conversations$Task[i]
+  
+  # Print progress
+  cat("Processing", i, "of", nrow(conversations), ":", 
+      current_file, "ID:", current_id, "Task:", current_task, "\n")
+  
+  # Filter data for this conversation
+  set1 <- d_subpaired %>% 
+    filter(filename == current_file, ID == current_id, Task == current_task)
+  
+  set2 <- collapsed_data %>% 
+    filter(filename == current_file, ID == current_id, Task == current_task)
+  
+  # Skip if either dataset is empty
+  if (nrow(set1) == 0 || nrow(set2) == 0) {
+    cat("  Skipping - Missing data\n")
+    next
+  }
+  
+  # Find overlapping time range
+  min_time <- max(min(set1$StartTime), min(set2$StartTime))
+  max_time <- min(max(set1$EndTime), max(set2$EndTime))
+  
+  # Skip if there's no meaningful overlap
+  if (min_time >= max_time) {
+    cat("  Skipping - No time overlap\n")
+    next
+  }
+  
+  # Set step size for time points (use larger step for long conversations)
+  step <- 0.05
+  if ((max_time - min_time) > 600) { # If longer than 10 minutes
+    step <- 0.05 # Use 200ms steps for efficiency
+  }
+  
+  # Create time points sequence
+  time_points <- seq(from = min_time, to = max_time, by = step)
+  
+  # Create vectors to store speaking status
+  set1_speaking <- logical(length(time_points))
+  set2_speaking <- logical(length(time_points))
+  
+  # Determine speaking status for each time point
+  for(j in 1:length(time_points)) {
+    tp <- time_points[j]
+    set1_speaking[j] <- any(set1$StartTime <= tp & set1$EndTime >= tp)
+    set2_speaking[j] <- any(set2$StartTime <= tp & set2$EndTime >= tp)
+  }
+  
+  # Convert logical to numeric (0/1) for kappa calculation
+  set1_numeric <- as.numeric(set1_speaking)
+  set2_numeric <- as.numeric(set2_speaking)
+  
+  # Skip if one set has no variation
+  if (all(set1_numeric == 1) || all(set1_numeric == 0) || 
+      all(set2_numeric == 1) || all(set2_numeric == 0)) {
+    cat("  Skipping - No variation in at least one dataset\n")
+    next
+  }
+  
+  # Calculate agreement percentage
+  agreement <- mean(set1_numeric == set2_numeric) * 100
+  
+  # Calculate kappa
+  kappa_data <- cbind(set1_numeric, set2_numeric)
+  
+  # Try to calculate kappa, skip if error
+  tryCatch({
+    kappa_result <- kappa2(kappa_data)
+    kappa_value <- kappa_result$value
+    
+    # Add to results
+    results_df <- rbind(results_df, data.frame(
+      file = current_file,
+      id = current_id,
+      task = current_task,
+      kappa = kappa_value,
+      agreement = agreement,
+      duration = max_time - min_time,
+      min_time = min_time,
+      max_time = max_time
+    ))
+    
+    cat("  Kappa:", round(kappa_value, 3), "Agreement:", round(agreement, 1), "%\n")
+    
+  }, error = function(e) {
+    cat("  Error calculating kappa:", as.character(e), "\n")
+  })
+}
+
+# Calculate overall statistics
+cat("\n--- Overall Results ---\n")
+cat("Number of conversations analyzed:", nrow(results_df), "\n")
+cat("Mean Kappa:", mean(results_df$kappa, na.rm = TRUE), "\n")
+cat("Median Kappa:", median(results_df$kappa, na.rm = TRUE), "\n")
+cat("Mean Agreement:", mean(results_df$agreement, na.rm = TRUE), "%\n")
+
+results_df <- results_df %>%
+  mutate(task = str_replace_all(task, "Questions", "Conversations")) %>%
+  mutate(task = str_replace_all(task, "MatchingGame", "Matching Game"))
+
+# Create summary by task
+task_summary <- results_df %>%
+  group_by(task) %>%
+  summarize(
+    count = n(),
+    mean_kappa = mean(kappa, na.rm = TRUE),
+    median_kappa = median(kappa, na.rm = TRUE),
+    mean_agreement = mean(agreement, na.rm = TRUE),
+    lci = quantile(kappa, probs = c(0.025)),
+    uci = quantile(kappa, probs = c(0.975)),
+  )
+
+print(task_summary)
+
+# Histogram of kappa values
+kappa_child_turns <- ggplot(results_df, aes(x = kappa)) +
+  geom_histogram(binwidth = 0.05, fill = "#CC79A7", color = "black") +
+  geom_vline(xintercept = mean(results_df$kappa, na.rm = TRUE), color = "#009E73", linetype = "dashed", size = 1) +
+  #scale_fill_okabeito() +
+  #scale_color_okabeito() +
+  ggtitle("Child Turns") +
+  xlab("Cohen's Kappa") +
+  ylab('Count') +
+  facet_wrap(~ task) +
+  guides(color = guide_legend(reverse=TRUE), fill = guide_legend(reverse=TRUE)) +
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(0.25, 0.92),
+        legend.key.size = unit(3, "lines"),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"),
+        #panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.border = element_blank())
+```
+
+```{r}
+# Choose a specific conversation to visualize
+specific_file <- "20210609_131732EDT_PIN6148_VBM_SC.wav"
+specific_id <- "6148"
+specific_task <- "Questions"
+
+# Filter data for this file
+set1 <- d_subpaired %>% 
+  filter(filename == specific_file, ID == specific_id, Task == specific_task)
+
+set2 <- collapsed_data %>% 
+  filter(filename == specific_file, ID == specific_id, Task == specific_task)
+
+# Print some basic info about this conversation
+cat("File:", specific_file, "\n")
+cat("ID:", specific_id, "\n")
+cat("Task:", specific_task, "\n")
+cat("Kappa value from our analysis:", results_df %>% 
+      filter(file == specific_file, id == specific_id, task == specific_task) %>% 
+      pull(kappa), "\n")
+cat("Number of utterances in Set1:", nrow(set1), "\n")
+cat("Number of utterances in Set2:", nrow(set2), "\n")
+
+# Determine start time to use for visualization
+min_time <- max(min(set1$StartTime), min(set2$StartTime))
+# We'll show 3 minutes (180 seconds) from the start
+max_time_for_viz <- min_time + 180
+# Make sure we don't exceed the actual data range
+max_time_for_viz <- min(max_time_for_viz, min(max(set1$EndTime), max(set2$EndTime)))
+
+# Create dataframes for plotting
+set1_plot <- set1 %>%
+  filter(StartTime < max_time_for_viz) %>%  # Only include utterances starting within our window
+  select(StartTime, EndTime) %>%
+  rename(start.points = StartTime, end.points = EndTime) %>%
+  mutate(
+    Type = "Manual",
+    y = 2,
+    end.points = pmin(end.points, max_time_for_viz)
+  )
+
+set2_plot <- set2 %>%
+  filter(StartTime < max_time_for_viz) %>%  # Only include utterances starting within our window
+  select(StartTime, EndTime) %>%
+  rename(start.points = StartTime, end.points = EndTime) %>%
+  mutate(
+    Type = "Automatic",
+    y = 1,
+    end.points = pmin(end.points, max_time_for_viz)
+  )
+
+# Combine the datasets
+plot_alignment <- rbind(set1_plot, set2_plot)
+
+# Create the plot using your existing code, with a few adjustments
+plot_alignment_plot <- ggplot(plot_alignment) + 
+  geom_rect(aes(xmin=start.points, xmax=end.points, ymax = y, ymin = 1.5, fill = Type), 
+           size = 2, show.legend = FALSE, alpha = 0.6) + 
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  xlab('Time Intervals of Utterances (sec)') + 
+  ggtitle(paste0('Alignment of Transcriptions for Child Turns')) +
+  xlim(c(min_time, max_time_for_viz)) +  # Use the actual time range from our data
+  scale_y_continuous(name = "", 
+                    breaks = c(1.25, 1.75), 
+                    labels = c("Transciber 1", "Transciber 2")) + 
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(0.25, 0.92),
+        legend.key.size = unit(3, "lines"),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.border = element_blank())
+```
+
+
+# Run reccurence analysis on the data
+```{r}
+d <- d %>%
+  mutate(Task = interaction(Familiarity, Task))
+
+test_ids <- unique(d$ID)
+test_tasks <- c("Familiar.MatchingGame", "Unfamiliar.Questions", "Familiar.Questions")
+
+test_results <- list()
+
+for(id in test_ids) {
+  for(task in test_tasks) {
+    result <- run_single_crqa(id, task)
+    if(!is.null(result)) {
+      test_results[[length(test_results) + 1]] <- result
+    }
+  }
+}
+
+if(length(test_results) > 0) {
+  crqa_results <- tibble(bind_rows(test_results))
+  print(crqa_results)
+} else {
+  cat("No successful CRQA analyses\n")
+}
+
+d_diagnosis <- d %>%
+  select(ID, Diagnosis) %>%
+  distinct()
+
+crqa_results_diag <- crqa_results %>%
+  mutate(Task = str_replace_all(Task, "Familiar.MatchingGame", "Matching With Parent"),
+         Task = str_replace_all(Task, "Unfamiliar.Questions", "Convo With Experimenter"),
+         Task = str_replace_all(Task, "Familiar.Questions", "Convo With Parent")) %>%
+  left_join(d_diagnosis) %>%
+  mutate(Diagnosis = str_replace_all(Diagnosis, "ASD", "Autism Group"),
+         Diagnosis = str_replace_all(Diagnosis, "TDC", "Typical Development Group"))
+  
+RecurrenceAnalysisPlot <- ggplot(crqa_results_diag) +
+  geom_histogram(aes(x = RR, fill = Task), color = "black", bins = 20, alpha = 0.7) +
+  facet_wrap(~Diagnosis) +
+  scale_y_continuous(breaks = seq(0, 15, 2)) +
+  scale_x_continuous(breaks = seq(0, 100, 20), limits = c(-0, 80)) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7", "#D95F02FF")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7", "#D95F02FF")) +
+  xlab('Recurrence Rate') +
+  ylab('Session Count') +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        legend.position = "bottom",
+        legend.key.size = unit(2, "lines"),
+        legend.text = element_text(size = 15),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.border = element_blank())
+RecurrenceAnalysisPlot
+```
+
+### Make Table with Metrics
+
+```{r}
+summary_stats <- crqa_results_diag %>%
+  group_by(Diagnosis, Task) %>%
+  summarize(
+    RR_mean = mean(RR, na.rm = TRUE),
+    RR_sd = sd(RR, na.rm = TRUE),
+    DET_mean = mean(DET, na.rm = TRUE),
+    DET_sd = sd(DET, na.rm = TRUE),
+    LAM_mean = mean(LAM, na.rm = TRUE),
+    LAM_sd = sd(LAM, na.rm = TRUE),
+    L_mean = mean(L, na.rm = TRUE),
+    L_sd = sd(L, na.rm = TRUE),
+    TT_mean = mean(TT, na.rm = TRUE),
+    TT_sd = sd(TT, na.rm = TRUE),
+    ENTR_mean = mean(ENTR, na.rm = TRUE),
+    ENTR_sd = sd(ENTR, na.rm = TRUE),
+    n = n()
+  ) %>%
+  ungroup()
+
+autism_data <- summary_stats %>%
+  filter(Diagnosis == "Autism Group") %>%
+  select(-Diagnosis, -n) %>%
+  rename_with(~paste0(.x, "_autism"), -Task)
+
+typical_data <- summary_stats %>%
+  filter(Diagnosis == "Typical Development Group") %>%
+  select(-Diagnosis, -n) %>%
+  rename_with(~paste0(.x, "_typical"), -Task)
+
+combined_data <- full_join(autism_data, typical_data, by = "Task")
+
+# Now generate the LaTeX table manually to match the style
+generate_latex_table <- function(data) {
+  # Task order as in your example
+  task_order <- c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")
+  data <- data %>% arrange(match(Task, task_order))
+  
+  # Define metrics to include
+  metrics <- list(
+    RR = list(name = "RR", mean_suffix = "_mean", sd_suffix = "_sd"),
+    DET = list(name = "DET", mean_suffix = "_mean", sd_suffix = "_sd"),
+    LAM = list(name = "LAM", mean_suffix = "_mean", sd_suffix = "_sd"),
+    L = list(name = "L", mean_suffix = "_mean", sd_suffix = "_sd"),
+    TT = list(name = "TT", mean_suffix = "_mean", sd_suffix = "_sd"),
+    ENTR = list(name = "ENTR", mean_suffix = "_mean", sd_suffix = "_sd")
+  )
+  
+  # Start the table
+  output <- "\\begin{table}[H]\n\\centering\n\\caption{Cross-Recurrence Quantification Analysis Metrics by Task and Diagnostic Group}\n\\label{tab:crqa_metrics}\n"
+  output <- paste0(output, "\\begin{tabular}{llcc}\n\\hline\n")
+  
+  # Add header
+  output <- paste0(output, " & \\textbf{Tasks} & \\textbf{Autism Group} & \\textbf{Typical Development}\\\\ \n\\hline\n")
+  
+  # Process each metric
+  for (metric in metrics) {
+    metric_name <- metric$name
+    mean_autism_col <- paste0(metric_name, metric$mean_suffix, "_autism")
+    sd_autism_col <- paste0(metric_name, metric$sd_suffix, "_autism")
+    mean_typical_col <- paste0(metric_name, metric$mean_suffix, "_typical")
+    sd_typical_col <- paste0(metric_name, metric$sd_suffix, "_typical")
+    
+    # Add metric row header
+    output <- paste0(output, "\\textbf{", metric_name, "} ")
+    
+    # Add rows for each task
+    for (i in 1:nrow(data)) {
+      output <- paste0(output, "& ", data$Task[i], " & ", 
+                      sprintf("%.2f [%.2f, %.2f]", 
+                              data[[mean_autism_col]][i], 
+                              data[[mean_autism_col]][i] - 1.96*data[[sd_autism_col]][i], 
+                              data[[mean_autism_col]][i] + 1.96*data[[sd_autism_col]][i]), 
+                      " & ",
+                      sprintf("%.2f [%.2f, %.2f]", 
+                              data[[mean_typical_col]][i], 
+                              data[[mean_typical_col]][i] - 1.96*data[[sd_typical_col]][i], 
+                              data[[mean_typical_col]][i] + 1.96*data[[sd_typical_col]][i]), 
+                      " \\\\ \n")
+    }
+    
+    # Calculate aggregates
+    agg_mean_autism <- mean(data[[mean_autism_col]])
+    agg_sd_autism <- sqrt(mean(data[[sd_autism_col]]^2))
+    agg_mean_typical <- mean(data[[mean_typical_col]])
+    agg_sd_typical <- sqrt(mean(data[[sd_typical_col]]^2))
+    
+    # Add aggregate row
+    output <- paste0(output, "& Aggregate Estimate & ", 
+                    sprintf("%.2f [%.2f, %.2f]", 
+                            agg_mean_autism, 
+                            agg_mean_autism - 1.96*agg_sd_autism, 
+                            agg_mean_autism + 1.96*agg_sd_autism), 
+                    " & ",
+                    sprintf("%.2f [%.2f, %.2f]", 
+                            agg_mean_typical, 
+                            agg_mean_typical - 1.96*agg_sd_typical, 
+                            agg_mean_typical + 1.96*agg_sd_typical), 
+                    " \\\\ \n\\hline\n")
+  }
+  
+  # Finish the table
+  output <- paste0(output, "\\end{tabular}\n\\end{table}")
+  
+  return(output)
+}
+
+# Generate the table
+latex_table <- generate_latex_table(combined_data)
+
+# Print the result
+cat(latex_table)
+```
+
+### Recurrence Profile
+```{r}
+run_lag_crqa <- function(id_val, task_val, max_lag = 5) {
+  cat("\nProcessing ID:", id_val, "Task:", task_val, "\n")
+  
+  # Filter data
+  dyad_data <- d %>% 
+    filter(ID == id_val, Task == task_val)
+  
+  # Extract latencies
+  adult_latencies <- dyad_data %>% 
+    filter(Speaker == "Adult") %>%
+    arrange(StartTime) %>%
+    pull(Latency) %>%
+    na.omit()
+  
+  child_latencies <- dyad_data %>% 
+    filter(Speaker == "Child") %>%
+    arrange(StartTime) %>%
+    pull(Latency) %>%
+    na.omit()
+  
+  # Check if we have enough data
+  if(length(adult_latencies) < (max_lag + 10) || length(child_latencies) < (max_lag + 10)) {
+    cat("Not enough data points for lag analysis\n")
+    return(NULL)
+  }
+  
+  # Ensure equal length
+  min_length <- min(length(adult_latencies), length(child_latencies))
+  adult_latencies <- adult_latencies[1:min_length]
+  child_latencies <- child_latencies[1:min_length]
+  
+  # Check for data issues
+  if(any(is.infinite(adult_latencies)) || any(is.infinite(child_latencies))) {
+    cat("Found infinite values\n")
+    return(NULL)
+  }
+  
+  # Initialize results dataframe
+  lag_results <- data.frame()
+  
+  # Run CRQA for each lag from -max_lag to +max_lag
+  for(lag in -max_lag:max_lag) {
+    tryCatch({
+      if(lag == 0) {
+        # No lag - standard CRQA
+        ts1 <- adult_latencies
+        ts2 <- child_latencies
+      } else if(lag > 0) {
+        # Positive lag: adult leads child by 'lag' time steps
+        ts1 <- adult_latencies[1:(length(adult_latencies) - lag)]
+        ts2 <- child_latencies[(lag + 1):length(child_latencies)]
+      } else {
+        # Negative lag: child leads adult by abs(lag) time steps
+        lag_abs <- abs(lag)
+        ts1 <- adult_latencies[(lag_abs + 1):length(adult_latencies)]
+        ts2 <- child_latencies[1:(length(child_latencies) - lag_abs)]
+      }
+      
+      # Run CRQA
+      results <- crqa(ts1, ts2,
+                      delay = 1, embed = 1,
+                      radius = 0.1,
+                      normalize = TRUE,
+                      rescale = 0,
+                      mindiagline = 2, minvertline = 2)
+      
+      # Store results
+      lag_results <- rbind(lag_results, data.frame(
+        ID = id_val,
+        Task = task_val,
+        Lag = lag,
+        DataPoints = length(ts1),
+        RR = results$RR,
+        DET = results$DET,
+        LAM = results$LAM,
+        L = results$L,
+        TT = results$TT,
+        ENTR = results$ENTR
+      ))
+      
+    }, error = function(e) {
+      cat("CRQA error at lag", lag, ":", e$message, "\n")
+    })
+  }
+  
+  return(lag_results)
+}
+
+unique_combinations <- d %>%
+  select(ID, Task) %>%
+  distinct()
+
+# Initialize results list
+all_lag_results <- list()
+
+# Run analysis for each combination
+for(i in 1:nrow(unique_combinations)) {
+  id_val <- unique_combinations$ID[i]
+  task_val <- unique_combinations$Task[i]
+  
+  result <- run_lag_crqa(id_val, task_val, max_lag = 5)
+  if(!is.null(result)) {
+    all_lag_results[[length(all_lag_results) + 1]] <- result
+  }
+  
+  # Progress indicator
+  if(i %% 10 == 0) {
+    cat("Processed", i, "of", nrow(unique_combinations), "combinations\n")
+  }
+}
+
+if(length(all_lag_results) > 0) {
+  lag_crqa_results <- bind_rows(all_lag_results)
+  
+  # Add diagnosis information
+  lag_crqa_results_diag <- lag_crqa_results %>%
+    mutate(Task = str_replace_all(Task, "Familiar.MatchingGame", "Matching With Parent"),
+           Task = str_replace_all(Task, "Unfamiliar.Questions", "Convo With Experimenter"),
+           Task = str_replace_all(Task, "Familiar.Questions", "Convo With Parent")) %>%
+    left_join(d_diagnosis, by = "ID") %>%
+    mutate(Diagnosis = str_replace_all(Diagnosis, "ASD", "Autism Group"),
+           Diagnosis = str_replace_all(Diagnosis, "TDC", "Typical Development"))
+  
+  cat("Lag analysis complete!\n")
+  print(head(lag_crqa_results_diag))
+  
+} else {
+  cat("No successful lag analyses\n")
+}
+
+# Calculate average lag profiles across dyads
+average_lag_profiles <- lag_crqa_results_diag %>%
+  group_by(Diagnosis, Task, Lag) %>%
+  summarise(
+    n_dyads = n(),
+    mean_RR = mean(RR, na.rm = TRUE),
+    se_RR = sd(RR, na.rm = TRUE) / sqrt(n()),
+    mean_DET = mean(DET, na.rm = TRUE),
+    se_DET = sd(DET, na.rm = TRUE) / sqrt(n()),
+    .groups = 'drop'
+  ) %>%
+  filter(n_dyads >= 5) %>%
+  mutate(Task = case_when(
+    Task == "Familiar.Familiar.Familiar.Convo With Parent" ~ "Convo With Parent",
+    Task == "Familiar.Familiar.Familiar.Matching With Parent" ~ "Matching With Parent",
+    Task == "Unfamiliar.Unfamiliar.Unfamiliar.Convo With Experimenter" ~ "Convo With Experimenter"))
+
+# Create the diagonal recurrence profile plot
+lag_profile_plot <- ggplot(average_lag_profiles, aes(x = Lag, y = mean_RR, color = Diagnosis, fill = Diagnosis)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2, show.legend = FALSE) +
+  geom_ribbon(aes(ymin = mean_RR - 0.5*se_RR, ymax = mean_RR + 0.5*se_RR), 
+              alpha = 0.2, color = NA, show.legend = FALSE) +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.5) +
+  facet_wrap(~ Task, scales = "free_y") +
+  scale_color_manual(values = c("Autism Group" = "#009E73", "Typical Development" = "#CC79A7")) +
+  scale_fill_manual(values = c("Autism Group" = "#009E73", "Typical Development" = "#CC79A7")) +
+  labs(
+    x = "Lag (Negative = Child Leads, Positive = Adult Leads)",
+    y = "Mean Recurrence Rate",
+    title = "",
+    color = "Group"
+  ) +
+  scale_x_continuous(breaks = seq(-5, 5, 1)) +
+  guides(color = guide_legend(reverse=TRUE), 
+         fill = guide_legend(show = FALSE),
+         point = guide_legend(show = FALSE),) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        legend.position = "bottom",
+        legend.key.size = unit(3, "lines"),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.border = element_blank())
+
+print(lag_profile_plot)
+```
+
+
+
+# Research Assistant Analyses 
+```{r}
+ra_data <- read.csv('/work/VBMTurnTakingFiles/data/RAparticipant_dist.csv') %>%
+  mutate(
+    RA.name = str_replace_all(RA.name, " ", ""),
+    RA.name.1 = str_replace_all(RA.name.1, " ", ""),
+    RA.name.2 = str_replace_all(RA.name.2, " ", ""),
+    RA.name.3 = str_replace_all(RA.name.3, " ", "")
+  )
+
+# Filter for study participants
+study_participants <- ra_data %>%
+  filter(LDC.Phone.Platform.PIN.. %in% unique(d$ID)) 
+
+# Analysis 1: RA consistency per participant
+ra_consistency <- study_participants %>%
+  rowwise() %>%
+  mutate(
+    ras = list(c(RA.name, RA.name.1, RA.name.2, RA.name.3)),
+    unique_ras = list(unique(ras[ras != "" & !is.na(ras)])),
+    num_unique_ras = length(unique_ras),
+    same_ra_all_sessions = num_unique_ras == 1,
+    complete_sessions = sum(!is.na(c(Session.1.completed., Session.3.completed., 
+                                   Session.5.completed., Session.7.completed.)) & 
+                           c(Session.1.completed., Session.3.completed., 
+                            Session.5.completed., Session.7.completed.) == "Yes")
+  )
+
+d_join <- d %>%
+  group_by(ID, Diagnosis) %>%
+  summarise(mean = mean(Latency, na.rm = T)) %>%
+  select(-mean)
+
+# Prepare data for heatmap with anonymization
+heatmap_data <- ra_consistency %>%
+  mutate(RA.name = ifelse(RA.name == "Aili", "AiliHauptmann", RA.name)) %>%
+  mutate(RA.name.1 = ifelse(RA.name.1 == "Aili", "AiliHauptmann", RA.name.1)) %>%
+  mutate(RA.name.2 = ifelse(RA.name.2 == "Aili", "AiliHauptmann", RA.name.2)) %>%
+  mutate(RA.name.3 = ifelse(RA.name.3 == "Aili", "AiliHauptmann", RA.name.3)) %>%
+  select(LDC.Phone.Platform.PIN.., RA.name, RA.name.1, RA.name.2, RA.name.3) %>%
+  rename("ID" = LDC.Phone.Platform.PIN..) %>%
+  rowwise() %>%
+  mutate(
+    ras = list(c(RA.name, RA.name.1, RA.name.2, RA.name.3)),
+    unique_ras = list(unique(ras[ras != "" & !is.na(ras)])),
+    num_unique_ras = length(unique_ras)
+  ) %>%
+  ungroup() %>%
+  left_join(d_join) %>%
+  group_by(Diagnosis) %>%
+  arrange(num_unique_ras, ID) %>%
+  mutate(
+    Participant = paste0("P", sprintf("%02d", row_number()))
+  ) %>%
+  ungroup()
+
+# Create a single mapping for all RAs
+all_ras <- unique(c(heatmap_data$RA.name, heatmap_data$RA.name.1, 
+                   heatmap_data$RA.name.2, heatmap_data$RA.name.3))
+all_ras <- all_ras[!is.na(all_ras) & all_ras != ""]
+ra_mapping <- setNames(paste0("RA", 1:length(all_ras)), all_ras)
+
+# Apply the mapping
+heatmap_data <- heatmap_data %>%
+  mutate(
+    RA.name = ra_mapping[RA.name],
+    RA.name.1 = ra_mapping[RA.name.1],
+    RA.name.2 = ra_mapping[RA.name.2],
+    RA.name.3 = ra_mapping[RA.name.3]
+  ) %>%
+  select(Participant, Diagnosis, num_unique_ras, RA.name, RA.name.1, RA.name.2, RA.name.3) %>%
+  rename(
+    Session_1 = RA.name,
+    Session_3 = RA.name.1,
+    Session_5 = RA.name.2,
+    Session_7 = RA.name.3
+  ) %>%
+  # Convert to long format
+  pivot_longer(cols = starts_with("Session"), 
+               names_to = "Session", 
+               values_to = "RA") %>%
+  # Clean session names
+  mutate(
+    Session = case_when(
+      Session == "Session_1" ~ "Session 1",
+      Session == "Session_3" ~ "Session 3", 
+      Session == "Session_5" ~ "Session 5",
+      Session == "Session_7" ~ "Session 7"
+    ),
+    Session = factor(Session, levels = c("Session 1", "Session 3", "Session 5", "Session 7")),
+    # Create proper factor levels for participants within each diagnosis
+    Participant = factor(Participant, levels = unique(Participant[order(Diagnosis, num_unique_ras)])),
+    Diagnosis = case_when(
+      Diagnosis == "ASD" ~ "Autism Group",
+      Diagnosis == "TDC" ~ "Typical Development Group"
+    )
+  )
+
+# Create color palette for RAs
+unique_ras <- unique(heatmap_data$RA)
+n_ras <- length(unique_ras)
+colors <- RColorBrewer::brewer.pal(min(n_ras, 11), "Set3")
+if(n_ras > 11) colors <- rainbow(n_ras)
+
+# Create heatmap
+ggplot(heatmap_data, aes(x = Session, y = Participant, fill = RA)) +
+  geom_tile(color = "black", size = 0.5) +
+  scale_fill_manual(values = setNames(colors, unique_ras), name = "Research Assistant") +
+  scale_y_discrete(limits = rev(levels(heatmap_data$Participant))) +
+  theme_minimal() +
+  theme(
+    #axis.text.y = element_blank(),  # Remove y-axis labels
+    axis.ticks.y = element_blank(), # Remove y-axis ticks
+    axis.text.x = element_text(angle = 0, hjust = 0.5),
+    legend.position = "right",
+    panel.grid = element_blank(),
+    plot.title = element_text(hjust = 0.5)
+  ) +
+  facet_wrap(~Diagnosis, scales = "free_y") +
+  labs(
+    title = "Research Assistant Assignments by Participant and Session",
+    x = "",
+    y = "Participants"  # Keep y-axis title but remove labels
+  ) +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 17, color = "black"),
+        legend.title = element_blank(),
+        legend.key.size = unit(3, "lines"),
+        legend.text = element_text(size = 15),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+```
+## Check Model Estimates
+```{r}
+RA_participant_d <- read.csv('/work/VBMTurnTaking/data/RAparticipant_dist.csv') %>%
+  filter(LDC.Phone.Platform.PIN.. %in% unique(d$ID))
+
+ra_clean <- RA_participant_d %>%
+  # Rename columns for clarity
+  rename(
+    ID = LDC.Phone.Platform.PIN..,
+    RA_Session1 = RA.name,
+    RA_Session3 = RA.name.1,
+    RA_Session5 = RA.name.2,
+    RA_Session7 = RA.name.3
+  ) %>%
+  # Select only ID and RA columns
+  select(ID, RA_Session1, RA_Session3, RA_Session5, RA_Session7) %>%
+  # Convert to long format
+  pivot_longer(
+    cols = starts_with("RA_Session"),
+    names_to = "Session_temp",
+    values_to = "RA",
+    names_prefix = "RA_Session"
+  ) %>%
+  # Clean up session numbers
+  mutate(
+    Visit = as.numeric(Session_temp),
+    # Clean up RA names - handle inconsistencies
+    RA = case_when(
+      trimws(RA) == "Aili" ~ "Aili Hauptmann",
+      trimws(RA) == "" ~ NA_character_,
+      is.na(RA) ~ NA_character_,
+      TRUE ~ trimws(RA)
+    )
+  ) %>%
+  # Remove the temporary column
+  select(ID, Visit, RA) %>%
+  # Remove rows where RA is missing
+  filter(!is.na(RA)) %>%
+  # Remove duplicates if any
+  distinct()
+
+# Anonymize the RAs
+unique_ras <- unique(ra_clean$RA[!is.na(ra_clean$RA)])
+ra_mapping <- setNames(paste0("RA_", LETTERS[1:length(unique_ras)]), unique_ras)
+
+ra_clean <- ra_clean %>%
+  mutate(RA = recode(RA, !!!ra_mapping))
+
+# Filter data to Questions task with Unfamiliar experimenter only
+d_filtered <- filter(d, Task == "Questions", Familiarity == "Unfamiliar", InterTurn == "Child2Adult") %>%
+  filter(RA != "RA_C") %>%
+  mutate(RA = as.factor(RA)) 
+
+# Control analysis formula with RA as fixed effect
+Latency_RA_control <- bf(
+  Latency ~ 0 + Diagnosis + RA + RA:Diagnosis + (Diagnosis | p | RA),
+  #sigma ~ 0 + Diagnosis + RA:Diagnosis + (1 | p | ID),
+  beta ~ 0 + Diagnosis + RA + RA:Diagnosis + (Diagnosis | p | RA)
+)
+
+# Simplified priors for control analysis
+priorRA_control <- c(
+  prior(normal(1, 1), class = b),
+  prior(normal(0, 0.3), class = sd),
+  prior(normal(0, 1), class = b, dpar = beta),
+  prior(normal(0, 0.1), class = sd, dpar = beta))
+
+# Run the control model
+ChildLatency_RA_control_simple <- brm(
+  Latency_RA_control,
+  data = d_filtered,
+  family = exgaussian,
+  prior = priorRA_control,
+  sample_prior = T,
+  backend = "cmdstanr",
+  iter = 2000,
+  warmup = 500,
+  init = 0,
+  chains = 4,
+  cores = 64,
+  file = here("models", "ChildLatency_RA_control_Questions_Unfamiliar_simple_simple_simple"),
+  control = list(adapt_delta = 0.98, max_treedepth = 20),
+  stan_model_args = list(stanc_options = list("O1"))
+)
+pp_check(ChildLatency_RA_control_simple, ndraws = 100)
+
+# Extract marginal means for each RA×Diagnosis combination
+marginal_effects <- ChildLatency_RA_control %>%
+  epred_draws(newdata = expand_grid(
+    Diagnosis = c("ASD", "TDC"),
+    RA = c("RA_A", "RA_B", "RA_D", "RA_E"), # excluding RA_C
+    ID = NA,
+    Visit = NA
+  ), 
+  re_formula = NA) %>%
+  group_by(Diagnosis, RA) %>%
+  summarise(
+    mean_latency = mean(.epred),
+    lower = quantile(.epred, 0.025),
+    upper = quantile(.epred, 0.975),
+    .groups = "drop"
+  ) %>%
+  mutate(RA = case_when(
+    RA == "RA_A" ~ "RA1",
+    RA == "RA_B" ~ "RA2",
+    RA == "RA_D" ~ "RA3",
+    RA == "RA_E" ~ "RA4"
+  )) %>%
+  mutate(Diagnosis = case_when(
+    Diagnosis == "ASD" ~ "Autism Group",
+    Diagnosis == "TDC" ~ "Typical Development"
+  ))
+
+RA_plot <- ggplot(marginal_effects, aes(x = RA, y = mean_latency, color = Diagnosis)) +
+  geom_point(size = 5, position = position_dodge(width = 0.3)) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), 
+                width = 0.2, size = 2, position = position_dodge(width = 0.3)) +
+  #geom_line(aes(group = Diagnosis), position = position_dodge(width = 0.3)) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  labs(
+    title = "",
+    x = "",
+    y = "Predicted Latency (seconds)",
+    color = "Diagnosis"
+  ) +
+  theme_minimal() +
+  guides(color = guide_legend(reverse=TRUE), fill = guide_legend(reverse=TRUE)) +
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(0.25, 0.92),
+        legend.key.size = unit(3, "lines"),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 15, color = "black"),
+        #panel.grid.major.y = element_blank(),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.border = element_blank())
+```
+
+# Recording Quality Analysis
+```{r}
+d_tech_quality <- read.csv('/work/VBMTurnTakingFiles/data/VBMTechQualityReport_2025-05-28.csv')
+
+# Filter for your study participants
+study_participants <- d_tech_quality %>%
+  filter(LDC.Phone.Platform.PIN.. %in% unique(d$ID)) %>%
+  rename("ID" = LDC.Phone.Platform.PIN..) %>%
+  left_join(d_join) %>%
+  mutate(Diagnosis = case_when(
+      Diagnosis == "ASD" ~ "Autism Group",
+      Diagnosis == "TDC" ~ "Typical Development Group"
+    ))
+
+glimpse(study_participants)
+
+# Analyze technical issues by session and diagnostic group
+tech_issues_summary <- study_participants %>%
+  select(ID, Diagnosis, 
+         Was.the.call.broken., Was.the.call.broken..1, Was.the.call.broken..2, 
+         Was.the.call.broken..3, Was.the.call.broken..4, Was.the.call.broken..5, Was.the.call.broken..6) %>%
+  rename(
+    Session_1 = Was.the.call.broken.,
+    Session_2 = Was.the.call.broken..1, 
+    Session_3 = Was.the.call.broken..2,
+    Session_4 = Was.the.call.broken..3,
+    Session_5 = Was.the.call.broken..4,
+    Session_6 = Was.the.call.broken..5,
+    Session_7 = Was.the.call.broken..6  # Note: Session 6 data goes to Session 7
+  ) %>%
+  pivot_longer(cols = starts_with("Session"), 
+               names_to = "Session", 
+               values_to = "Call_Broken") %>%
+  mutate(
+    Session = str_replace(Session, "Session_", "Session "),
+    Call_Broken = ifelse(Call_Broken == "Yes", 1, 0),
+    Call_Broken = ifelse(is.na(Call_Broken), 0, Call_Broken)
+  )
+
+# Summary by session and diagnosis
+session_diagnosis_summary <- tech_issues_summary %>%
+  group_by(Diagnosis, Session) %>%
+  summarise(
+    total_participants = n(),
+    technical_issues = sum(Call_Broken, na.rm = TRUE),
+    #percentage_issues = round((technical_issues / total_participants) * 100, 1),
+    .groups = 'drop'
+  )
+
+# Create a comprehensive technical issues summary
+tech_issues_detailed <- session_diagnosis_summary %>%
+  mutate(
+    CallWasDroppedCalledBackNoIssues = c(2, 0, 1, 0, 2, 0, 2,
+                                         5, 3, 1, 1, 1, 1, 0),
+    AudioBreakingUp = c(1, 0, 0, 0, 0, 0, 1,
+                        0, 0, 1, 0, 0, 0, 0),
+    IsolatedMutingEvents = c(1, 0, 0, 0, 0, 0, 0,
+                             0, 0, 1, 0, 1, 0, 3),
+    BackgroundNoise = c(0, 0, 0, 0, 0, 0, 0,
+                        0, 0, 0, 0, 0, 0, 0),
+    # Determine audio recording impact
+    Audio_Recording_Affected = case_when(
+      AudioBreakingUp > 0 | IsolatedMutingEvents > 0 | BackgroundNoise > 0 ~ "Partial",
+      CallWasDroppedCalledBackNoIssues > 0 ~ "No",
+      technical_issues == 0 ~ "No",
+      TRUE ~ "No"
+    )
+  ) %>%
+  # Create a cleaner summary
+  mutate(
+    Issues_Summary = case_when(
+      technical_issues == 0 ~ "No issues",
+      CallWasDroppedCalledBackNoIssues > 0 & AudioBreakingUp == 0 & IsolatedMutingEvents == 0 & BackgroundNoise == 0 ~ 
+        paste0("Call dropped/reconnected (", CallWasDroppedCalledBackNoIssues, ")"),
+      TRUE ~ paste(
+        ifelse(CallWasDroppedCalledBackNoIssues > 0, paste0("Call dropped (", CallWasDroppedCalledBackNoIssues, ")"), ""),
+        ifelse(AudioBreakingUp > 0, paste0("Audio breaking up (", AudioBreakingUp, ")"), ""),
+        ifelse(IsolatedMutingEvents > 0, paste0("Muting events (", IsolatedMutingEvents, ")"), ""),
+        ifelse(BackgroundNoise > 0, paste0("Background noise (", BackgroundNoise, ")"), ""),
+        sep = "; "
+      ) %>% str_remove_all("^; |; $")
+    )
+  )
+
+print("TECHNICAL ISSUES SUMMARY BY SESSION AND GROUP:")
+print("=" %>% rep(80) %>% paste(collapse = ""))
+
+tech_summary_clean <- tech_issues_detailed %>%
+  select(Diagnosis, Session, total_participants, technical_issues, 
+         Audio_Recording_Affected, Issues_Summary) %>%
+  rename(
+    Group = Diagnosis,
+    `Total Participants` = total_participants,
+    `Technical Issues` = technical_issues,
+    `Recording Affected` = Audio_Recording_Affected,
+    `Issue Details` = Issues_Summary
+  )
+
+print(tech_summary_clean)
+
+```

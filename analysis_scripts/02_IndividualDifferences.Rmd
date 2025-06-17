@@ -1,0 +1,426 @@
+---
+title: "03_models_RQ3"
+output: html_document
+date: "2025-05-21"
+editor_options: 
+  chunk_output_type: console
+---
+
+# Child Individual Differences
+```{r, eval = FALSE}
+Latency_ID_f1 <- bf(
+  Latency ~ 0 + Diagnosis:Task:Familiarity + 
+    Diagnosis:Task:Familiarity:LanguageS_scaled + 
+    Diagnosis:Task:Familiarity:AwarenessS_scaled + 
+    Diagnosis:Task:Familiarity:MotivationS_scaled + 
+    Diagnosis:Task:Familiarity:CognitionS_scaled + 
+    Diagnosis:Task:Familiarity:MotorS_scaled + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task | r | Visit), 
+  sigma ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task | r | Visit),
+  beta ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis))  +  
+    (0 + Diagnosis:Task | r | Visit))
+
+priorChild <- c(
+  prior(normal(1, 1), class = b),
+  prior(normal(0, 0.3), class = sd),
+  prior(normal(0, 0.2), class = b, dpar = beta),
+  prior(normal(0, 0.3), class = sd, dpar = beta),
+  prior(normal(0, 0.3), class = b, dpar = sigma),
+  prior(normal(0, 0.5), class = sd, dpar = sigma),
+  prior(lkj(3), class = cor)
+)
+
+ChildLatency_m2_ID <- brm(
+    Latency_ID_f1,
+    data = subset(d, InterTurn == "Child2Adult"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = T,
+    backend = "cmdstanr",
+    iter = 4000,
+    warmup = 500,
+    init = 0,
+    chains = 4,
+    cores = 64,
+    file = here::here("models", "ChildLatency_m2_ID"),
+    control = list(adapt_delta = 0.999, max_treedepth = 20),
+    stan_model_args = list(stanc_options = list("O1"))
+  )
+```
+
+## Hypothesis Tests
+```{r}
+hypothesis_data_full_child <- extract_all_hypothesis_tests_m2_child(ChildLatency_m2_ID)
+
+#write.csv(hypothesis_data_full_child, here('stats_for_paper/model2_child_stats_for_paper.csv'))
+```
+
+## Visualisation of Model Estimates
+```{r}
+hypothesis_data_overall <- hypothesis_data_full[1:40, ] %>%
+  mutate(Parameter = sapply(strsplit(value, "_"), `[`,1)) %>%
+  mutate(Diagnosis = sapply(Parameter, function(x) substr(x, nchar(x) - 2, nchar(x)))) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Parameter = str_replace(Parameter, "ASD", "")) %>%
+  mutate(Parameter = str_replace(Parameter, "TDC", "")) %>%
+  mutate(Parameter = factor(Parameter, levels = c("Motivation", "Awareness", "Language", "Cognition", "Motor"))) %>%
+  mutate(Condition = sub(".*_(TG_F|Q_F|Q_UF)$", "\\1", value)) %>%
+  mutate(Condition = str_replace_all(Condition, 
+                                     c("MotorASD_overall" = "Overall", 
+                                       "MotorTDC_overall" = "Overall", 
+                                       "CognitionASD_overall" = "Overall", 
+                                       "CognitionTDC_overall" = "Overall", 
+                                       "LanguageASD_overall" = "Overall", 
+                                       "LanguageTDC_overall" = "Overall",
+                                       "AwarenessASD_overall" = "Overall", 
+                                       "AwarenessTDC_overall" = "Overall", 
+                                       "MotivationASD_overall" = "Overall", 
+                                       "MotivationTDC_overall" = "Overall"))) %>%
+  mutate(Condition = str_replace_all(Condition, 
+                                     c("TG_F" = "Matching With Parent", 
+                                       "Q_F" = "Convo With Parent", 
+                                       "Q_UF" = "Convo With Experimenter",
+                                       "Overall" = "Aggregated Estimate"))) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter", "Aggregated Estimate")))
+
+Posterior_df <- as_draws_df(ChildLatency_m2_ID)
+
+create_condition_posterior <- function(Posterior_df, Diagnosis, Task, Familiarity, Parameter) {
+  column_name <- paste0("b_Diagnosis", Diagnosis, ":Task", Task, ":Familiarity", Familiarity, ":", Parameter)
+  
+  condition_posterior <- Posterior_df[, column_name] %>%
+    mutate(Familiarity = Familiarity,
+           Task = Task,
+           Diagnosis = Diagnosis,
+           Parameter = Parameter) %>%
+    rename("Estimate" = !!sym(column_name)) %>%
+    mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+    mutate(Condition = case_when(
+      Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+      Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+      Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+    mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+  
+  return(condition_posterior)
+}
+
+Languagecondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "LanguageS_scaled")
+Languagecondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "LanguageS_scaled")
+Languagecondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "LanguageS_scaled")
+
+Languagecondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "LanguageS_scaled")
+Languagecondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "LanguageS_scaled")
+Languagecondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "LanguageS_scaled")
+
+Cognitioncondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "CognitionS_scaled")
+Cognitioncondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "CognitionS_scaled")
+Cognitioncondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "CognitionS_scaled")
+
+Cognitioncondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "CognitionS_scaled")
+Cognitioncondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "CognitionS_scaled")
+Cognitioncondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "CognitionS_scaled")
+
+Motorcondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "MotorS_scaled")
+Motorcondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "MotorS_scaled")
+Motorcondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "MotorS_scaled")
+
+Motorcondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "MotorS_scaled")
+Motorcondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "MotorS_scaled")
+Motorcondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "MotorS_scaled")
+
+Awarenesscondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "AwarenessS_scaled")
+Awarenesscondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "AwarenessS_scaled")
+Awarenesscondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "AwarenessS_scaled")
+
+Awarenesscondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "AwarenessS_scaled")
+Awarenesscondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "AwarenessS_scaled")
+Awarenesscondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "AwarenessS_scaled")
+
+Motivationcondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "MotivationS_scaled")
+Motivationcondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "MotivationS_scaled")
+Motivationcondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "MotivationS_scaled")
+
+Motivationcondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "MotivationS_scaled")
+Motivationcondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "MotivationS_scaled")
+Motivationcondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "MotivationS_scaled")
+
+full_posterior_predictions <- rbind(Languagecondition_posterior_TDC_MG, Languagecondition_posterior_TDC_Q_F, Languagecondition_posterior_TDC_Q_UF, 
+      Languagecondition_posterior_ASD_MG, Languagecondition_posterior_ASD_Q_F, Languagecondition_posterior_ASD_Q_UF,
+      
+      Motorcondition_posterior_TDC_MG, Motorcondition_posterior_TDC_Q_F, Motorcondition_posterior_TDC_Q_UF, 
+      Motorcondition_posterior_ASD_MG, Motorcondition_posterior_ASD_Q_F, Motorcondition_posterior_ASD_Q_UF,
+  
+      Awarenesscondition_posterior_TDC_MG, Awarenesscondition_posterior_TDC_Q_F, Awarenesscondition_posterior_TDC_Q_UF, 
+      Awarenesscondition_posterior_ASD_MG, Awarenesscondition_posterior_ASD_Q_F, Awarenesscondition_posterior_ASD_Q_UF,
+      
+      Cognitioncondition_posterior_TDC_MG, Cognitioncondition_posterior_TDC_Q_F, Cognitioncondition_posterior_TDC_Q_UF, 
+      Cognitioncondition_posterior_ASD_MG, Cognitioncondition_posterior_ASD_Q_F, Cognitioncondition_posterior_ASD_Q_UF,
+
+      Motivationcondition_posterior_TDC_MG, Motivationcondition_posterior_TDC_Q_F, Motivationcondition_posterior_TDC_Q_UF, 
+      Motivationcondition_posterior_ASD_MG, Motivationcondition_posterior_ASD_Q_F, Motivationcondition_posterior_ASD_Q_UF) %>%
+  mutate(Parameter = str_replace(Parameter, "S_scaled", "")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter", "Aggregated Estimate"))) %>%
+  mutate(Parameter = str_replace_all(Parameter, c("Motivation" = "Social Motivation",
+                                                  "Cognition" = "Social Cognition",
+                                                  "Awareness" = "Social Awareness"))) %>%
+  mutate(Parameter = factor(Parameter, levels = c("Motor", "Language", "Social Motivation", "Social Awareness", "Social Cognition")))
+  
+Model2_Plot_Child_Conditions <- ggplot() +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_vline(xintercept = 2.48, linetype = 1, color = "black", linewidth = 1) +
+  geom_half_violin(aes(Parameter, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#009E73", color = "black", alpha = 0.9, data = filter(full_posterior_predictions, Diagnosis == "Autism Group"), side = "r", position = position_nudge(x = 0), adjust = 1.3) +
+  geom_half_violin(aes(Parameter, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#CC79A7", color = "black", alpha = 0.9, data = filter(full_posterior_predictions, Diagnosis == "Typical Development"), side = "r", position = position_nudge(x = 0), adjust = 1.3) +
+  facet_wrap(~Condition, scales = "free_x", nrow = 1) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  xlab(' ') +
+  coord_flip() +
+  ylab('Change in Child Response Latency (seconds)') +
+  scale_y_continuous(breaks = c(-1, 0, 1), limits = c(-1.5, 1.2)) +
+  guides(color = "none", fill = guide_legend(reverse=TRUE)) +
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 15, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(0.4, 0.95),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(3, "lines"),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+
+
+Model2_Plot_Child_Conditions <- ggplot() +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_vline(xintercept = 2.48, linetype = 1, color = "black", linewidth = 1) +
+  geom_half_violin(aes(Parameter, Estimate, fill = Diagnosis), 
+                  color = "black", alpha = 0.9, 
+                  data = filter(full_posterior_predictions, Diagnosis == "Autism Group"), 
+                  side = "r", position = position_nudge(x = 0), adjust = 1.3) +
+  geom_half_violin(aes(Parameter, Estimate, fill = Diagnosis), 
+                  color = "black", alpha = 0.9, 
+                  data = filter(full_posterior_predictions, Diagnosis == "Typical Development"), 
+                  side = "r", position = position_nudge(x = 0), adjust = 1.3) +
+  facet_wrap(~Condition, scales = "free_x", nrow = 1) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  xlab(' ') +
+  coord_flip() +
+  ylab('Change in Child Response Latency (seconds)') +
+  scale_y_continuous(breaks = c(-1, 0, 1), limits = c(-1.5, 1.2)) +
+  guides(color = "none", fill = guide_legend(reverse=TRUE)) +
+  theme_bw() + 
+  theme(panel.border = element_blank(),
+        plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 15, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(-0.1, 0.0),
+        legend.text = element_text(size = 15),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(2, "lines"),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.spacing.y = unit(-1.5, "lines"))
+
+Model2_Plot_Child_Conditions
+```
+
+# Adult Individual Differences
+```{r}
+AdultLatency_m2_ID <- brm(
+    Latency_ID_f1,
+    data = subset(d, InterTurn == "Adult2Child"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = T,
+    backend = "cmdstanr",
+    iter = 3000,
+    warmup = 500,
+    init = 0,
+    chains = 2,
+    cores = 64,
+    file = here::here("models", "AdultLatency_m2_ID"),
+    control = list(adapt_delta = 0.95, max_treedepth = 15),
+    stan_model_args = list(stanc_options = list("O1"))
+  )
+
+pp_check(AdultLatency_m2_ID, ndraws = 100)
+```
+
+## Hypothesis Tests
+```{r}
+hypothesis_data_full_adult <- extract_all_hypothesis_tests_m2_adult(AdultLatency_m2_ID)
+
+#write.csv(hypothesis_data_full_adult, here('stats_for_paper/model2_adult_stats_for_paper.csv'))
+```
+
+## Visualisation of Model Estimates
+```{r}
+hypothesis_data_overall <- hypothesis_data_full[1:40, ] %>%
+  #filter(str_detect(value, "overall")) %>%
+  mutate(Parameter = sapply(strsplit(value, "_"), `[`,1)) %>%
+  mutate(Diagnosis = sapply(Parameter, function(x) substr(x, nchar(x) - 2, nchar(x)))) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Parameter = str_replace(Parameter, "ASD", "")) %>%
+  mutate(Parameter = str_replace(Parameter, "TDC", "")) %>%
+  mutate(Parameter = factor(Parameter, levels = c("Motivation", "Awareness", "Language", "Cognition", "Motor"))) %>%
+  mutate(Condition = sub(".*_(TG_F|Q_F|Q_UF)$", "\\1", value)) %>%
+  mutate(Condition = str_replace_all(Condition, 
+                                     c("MotorASD_overall" = "Overall", 
+                                       "MotorTDC_overall" = "Overall", 
+                                       "CognitionASD_overall" = "Overall", 
+                                       "CognitionTDC_overall" = "Overall", 
+                                       "LanguageASD_overall" = "Overall", 
+                                       "LanguageTDC_overall" = "Overall",
+                                       "AwarenessASD_overall" = "Overall", 
+                                       "AwarenessTDC_overall" = "Overall", 
+                                       "MotivationASD_overall" = "Overall", 
+                                       "MotivationTDC_overall" = "Overall"))) %>%
+  mutate(Condition = str_replace_all(Condition, 
+                                     c("TG_F" = "Matching With Parent", 
+                                       "Q_F" = "Convo With Parent", 
+                                       "Q_UF" = "Convo With Experimenter",
+                                       "Overall" = "Aggregated Estimate"))) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter", "Aggregated Estimate")))
+
+Posterior_df <- as_draws_df(AdultLatency_m2_ID)
+
+create_condition_posterior <- function(Posterior_df, Diagnosis, Task, Familiarity, Parameter) {
+  column_name <- paste0("b_Diagnosis", Diagnosis, ":Task", Task, ":Familiarity", Familiarity, ":", Parameter)
+  
+  condition_posterior <- Posterior_df[, column_name] %>%
+    mutate(Familiarity = Familiarity,
+           Task = Task,
+           Diagnosis = Diagnosis,
+           Parameter = Parameter) %>%
+    rename("Estimate" = !!sym(column_name)) %>%
+    mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+    mutate(Condition = case_when(
+      Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+      Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+      Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+    mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+  
+  return(condition_posterior)
+}
+
+Languagecondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "LanguageS_scaled")
+Languagecondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "LanguageS_scaled")
+Languagecondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "LanguageS_scaled")
+
+Languagecondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "LanguageS_scaled")
+Languagecondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "LanguageS_scaled")
+Languagecondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "LanguageS_scaled")
+
+Cognitioncondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "CognitionS_scaled")
+Cognitioncondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "CognitionS_scaled")
+Cognitioncondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "CognitionS_scaled")
+
+Cognitioncondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "CognitionS_scaled")
+Cognitioncondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "CognitionS_scaled")
+Cognitioncondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "CognitionS_scaled")
+
+Motorcondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "MotorS_scaled")
+Motorcondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "MotorS_scaled")
+Motorcondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "MotorS_scaled")
+
+Motorcondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "MotorS_scaled")
+Motorcondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "MotorS_scaled")
+Motorcondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "MotorS_scaled")
+
+Awarenesscondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "AwarenessS_scaled")
+Awarenesscondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "AwarenessS_scaled")
+Awarenesscondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "AwarenessS_scaled")
+
+Awarenesscondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "AwarenessS_scaled")
+Awarenesscondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "AwarenessS_scaled")
+Awarenesscondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "AwarenessS_scaled")
+
+Motivationcondition_posterior_TDC_MG <- create_condition_posterior(Posterior_df, "TDC", "MatchingGame", "Familiar", "MotivationS_scaled")
+Motivationcondition_posterior_TDC_Q_F <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Familiar", "MotivationS_scaled")
+Motivationcondition_posterior_TDC_Q_UF <- create_condition_posterior(Posterior_df, "TDC", "Questions", "Unfamiliar", "MotivationS_scaled")
+
+Motivationcondition_posterior_ASD_MG <- create_condition_posterior(Posterior_df, "ASD", "MatchingGame", "Familiar", "MotivationS_scaled")
+Motivationcondition_posterior_ASD_Q_F <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Familiar", "MotivationS_scaled")
+Motivationcondition_posterior_ASD_Q_UF <- create_condition_posterior(Posterior_df, "ASD", "Questions", "Unfamiliar", "MotivationS_scaled")
+
+full_posterior_predictions <- rbind(Languagecondition_posterior_TDC_MG, Languagecondition_posterior_TDC_Q_F, Languagecondition_posterior_TDC_Q_UF, 
+      Languagecondition_posterior_ASD_MG, Languagecondition_posterior_ASD_Q_F, Languagecondition_posterior_ASD_Q_UF,
+      
+      Motorcondition_posterior_TDC_MG, Motorcondition_posterior_TDC_Q_F, Motorcondition_posterior_TDC_Q_UF, 
+      Motorcondition_posterior_ASD_MG, Motorcondition_posterior_ASD_Q_F, Motorcondition_posterior_ASD_Q_UF,
+  
+      Awarenesscondition_posterior_TDC_MG, Awarenesscondition_posterior_TDC_Q_F, Awarenesscondition_posterior_TDC_Q_UF, 
+      Awarenesscondition_posterior_ASD_MG, Awarenesscondition_posterior_ASD_Q_F, Awarenesscondition_posterior_ASD_Q_UF,
+      
+      Cognitioncondition_posterior_TDC_MG, Cognitioncondition_posterior_TDC_Q_F, Cognitioncondition_posterior_TDC_Q_UF, 
+      Cognitioncondition_posterior_ASD_MG, Cognitioncondition_posterior_ASD_Q_F, Cognitioncondition_posterior_ASD_Q_UF,
+
+      Motivationcondition_posterior_TDC_MG, Motivationcondition_posterior_TDC_Q_F, Motivationcondition_posterior_TDC_Q_UF, 
+      Motivationcondition_posterior_ASD_MG, Motivationcondition_posterior_ASD_Q_F, Motivationcondition_posterior_ASD_Q_UF) %>%
+  mutate(Parameter = str_replace(Parameter, "S_scaled", "")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter", "Aggregated Estimate"))) %>%
+  mutate(Parameter = str_replace_all(Parameter, c("Motivation" = "Social Motivation",
+                                                  "Cognition" = "Social Cognition",
+                                                  "Awareness" = "Social Awareness"))) %>%
+  mutate(Parameter = factor(Parameter, levels = c("Motor", "Language", "Social Motivation", "Social Awareness", "Social Cognition")))
+  
+Model2_Plot_Adult_Conditions <- ggplot() +
+  geom_hline(yintercept = 0, linetype = 2) +
+  geom_vline(xintercept = 2.48, linetype = 1, color = "black", linewidth = 1) +
+  geom_half_violin(aes(Parameter, Estimate, fill = Diagnosis), 
+                  color = "black", alpha = 0.9, 
+                  data = filter(full_posterior_predictions, Diagnosis == "Autism Group"), 
+                  side = "r", position = position_nudge(x = 0), adjust = 1.3) +
+  geom_half_violin(aes(Parameter, Estimate, fill = Diagnosis), 
+                  color = "black", alpha = 0.9, 
+                  data = filter(full_posterior_predictions, Diagnosis == "Typical Development"), 
+                  side = "r", position = position_nudge(x = 0), adjust = 1.3) +
+  facet_wrap(~Condition, scales = "free_x", nrow = 1) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  xlab(' ') +
+  coord_flip() +
+  ylab('Change in Adult Response Latency (seconds)') +
+  scale_y_continuous(breaks = c(-1, 0, 1), limits = c(-1.5, 1.2)) +
+  guides(color = "none", fill = guide_legend(reverse=TRUE)) +
+  theme_bw() + 
+  theme(panel.border = element_blank(),
+        plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 15, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(-0.1, 0.0),
+        legend.text = element_text(size = 15),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(2, "lines"),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.spacing.y = unit(-1.5, "lines"))
+
+Model2_Plot_Adult_Conditions
+
+```

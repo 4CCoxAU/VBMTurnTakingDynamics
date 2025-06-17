@@ -1,0 +1,518 @@
+---
+title: "01_models"
+output: pdf_document
+date: "2025-05-21"
+editor_options: 
+  chunk_output_type: console
+---
+
+# Child Response Latencies 
+```{r, eval = FALSE}
+Latency_f1 <- bf(
+  Latency ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit),
+  sigma ~ 0 + Diagnosis:Task:Familiarity + Diagnosis:Task:Familiarity:Visit +
+    (0 + Task:Familiarity:Visit | p | gr(ID, by = Diagnosis)),
+  beta ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis))  +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit))
+
+priorChild <- c(
+  prior(normal(1, 1), class = b),
+  prior(normal(0, 0.3), class = sd),
+  prior(normal(0, 1), class = b, dpar = beta),
+  prior(normal(0, 0.1), class = sd, dpar = beta),
+  prior(normal(0, 1), class = b, dpar = sigma),
+  prior(normal(0, 0.1), class = sd, dpar = sigma),
+  prior(lkj(2), class = cor)
+)
+
+ChildLatency_m1 <- brm(
+    Latency_f1,
+    data = subset(d, InterTurn == "Child2Adult"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = T,
+    backend = "cmdstanr",
+    iter = 2000,
+    warmup = 500,
+    init = 0,
+    chains = 2,
+    cores = 64,
+    file = here("models","ChildLatency_m1"),
+    control = list(adapt_delta = 0.90, max_treedepth = 12),
+    stan_model_args = list(stanc_options = list("O1"))
+    )
+
+pp_check(ChildLatency_m1, ndraws = 100)
+```
+
+## Hypothesis Tests
+```{r}
+# Bootstrapped correlation analysis:
+clean_data <- C2P_PredictedData %>%
+  ungroup() %>%
+  select(ID, Diagnosis, Condition, Estimate)
+
+asd_result <- bootstrap_cross_context("Autism Group")
+tdc_result <- bootstrap_cross_context("Typical Development")
+asd_result
+tdc_result
+
+HypothesisResultsChildLatenciesModel1 <- extract_all_hypothesis_tests_m1_child(ChildLatency_m1)
+
+#write.csv(HypothesisResultsChildLatenciesModel1, here('stats_for_paper/model1_child_stats_for_paper.csv'))
+```
+
+## Visualisation of Model Estimates
+```{r}
+newdata <- subset(d, InterTurn == "Child2Adult") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) 
+
+C2P_PredictedData <- as_tibble(predict(ChildLatency_m1, newdata = newdata)) %>%
+  mutate(Visit = newdata$Visit) %>%
+  mutate(Diagnosis = newdata$Diagnosis) %>%
+  mutate(ID = newdata$ID) %>%
+  mutate(Familiarity = newdata$Familiarity) %>%
+  mutate(Task = newdata$Task) %>%
+  mutate(size = Q97.5-Q2.5) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  group_by(Diagnosis, ID, Familiarity, Task) %>%
+  dplyr::summarise(Estimate = mean(Estimate)) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+Posterior_df <- as_draws_df(ChildLatency_m1)
+
+condition_posterior_TDC_MG <- Posterior_df[,"b_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "MatchingGame",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_ASD_MG <- Posterior_df[,"b_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "MatchingGame",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_TDC_Q_F <- Posterior_df[,"b_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "Questions",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_ASD_Q_F <- Posterior_df[,"b_DiagnosisASD:TaskQuestions:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "Questions",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskQuestions:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_TDC_Q_UF <- Posterior_df[,"b_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar"] %>%
+  mutate(Familiarity = "Unfamiliar",
+         Task = "Questions",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent"))) 
+
+condition_posterior_ASD_Q_UF <- Posterior_df[,"b_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar"] %>%
+  mutate(Familiarity = "Unfamiliar",
+         Task = "Questions",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+posteriors <- rbind(condition_posterior_ASD_MG, condition_posterior_TDC_MG,
+      condition_posterior_ASD_Q_F, condition_posterior_TDC_Q_F, 
+      condition_posterior_ASD_Q_UF, condition_posterior_TDC_Q_UF)
+
+Model1_Plot_Child_Conditions <- ggplot() +
+  geom_boxplot(aes(Condition, Estimate, color = Diagnosis, fill = Diagnosis), filter(posteriors, Diagnosis == "Autism Group"), width = 0.05, color = "black", position = position_nudge(x = -0.30), alpha = 0.9, outliers = F, show.legend = T) +
+  geom_boxplot(aes(Condition, Estimate, color = Diagnosis, fill = Diagnosis), filter(posteriors, Diagnosis == "Typical Development"), width = 0.05, color = "black", position = position_nudge(x = -0.10), alpha = 0.9, outliers = F, show.legend = T) +
+  geom_point(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#009E73", color = "#009E73", alpha = 0.7, data = filter(C2P_PredictedData, Diagnosis == "Autism Group"), size = 2, position = position_nudge(x = -.22)) + 
+  geom_point(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#CC79A7", color = "#CC79A7", alpha = 0.7, data = filter(C2P_PredictedData, Diagnosis == "Typical Development"), size = 2, position = position_nudge(x = -.18)) + 
+  geom_half_violin(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#009E73", color = "black", alpha = 0.9, data = filter(posteriors, Diagnosis == "Autism Group"), side = "r", position = position_nudge(x = 0), adjust = 1.7) +
+  geom_half_violin(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#CC79A7", color = "black", alpha = 0.9, data = filter(posteriors, Diagnosis == "Typical Development"), side = "r", position = position_nudge(x = 0), adjust = 1.7) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  xlab(' ') +
+  coord_flip() +
+  ylab('Average Child Response Latency (seconds)') +
+  guides(color = guide_legend(reverse=TRUE), fill = guide_legend(reverse=TRUE)) +
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 15, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(0.25, 0.92),
+        legend.key.size = unit(3, "lines"),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 15, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.border = element_blank())
+
+Model1_Plot_Child_Conditions
+```
+
+## Visualisation of Correlation Structures
+```{r}
+newdata <- subset(d, InterTurn == "Child2Adult") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) 
+
+C2P_PredictedData <- as_tibble(predict(ChildLatency_m1, newdata = newdata)) %>%
+  mutate(Visit = newdata$Visit) %>%
+  mutate(Diagnosis = newdata$Diagnosis) %>%
+  mutate(ID = newdata$ID) %>%
+  mutate(Familiarity = newdata$Familiarity) %>%
+  mutate(Task = newdata$Task) %>%
+  mutate(size = Q97.5-Q2.5) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  group_by(Diagnosis, ID, Familiarity, Task) %>%
+  dplyr::summarise(Estimate = mean(Estimate)) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+C2P_PredictedData <- C2P_PredictedData %>%
+  mutate(ID = as.factor(ID)) %>%
+  group_by(ID, Diagnosis) %>%
+  mutate(x_jitter = as.numeric(Condition) + runif(1, -0.2, 0.2))
+
+context_correlation_ASD <- ggplot(filter(C2P_PredictedData, Diagnosis == "Autism Group"), aes(x = x_jitter, y = Estimate, color = ID)) +
+  geom_point(size = 4) +
+  geom_line(aes(group = ID)) +
+  xlim(c(0.75, 3.25)) +
+  scale_x_continuous(limits = c(0.75, 3.25), breaks = 1:3, labels = levels(C2P_PredictedData$Condition)) +
+  guides(color = guide_legend(reverse=TRUE), fill = guide_legend(reverse=TRUE)) +
+  scale_color_manual(values = viridis(n = 28)) +
+  ggtitle('Autism Group') +
+  ylab('Child Response Latency (seconds)') +
+  xlab(' ') +
+  ylim(c(0, 1.5)) +
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 17, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 17, color = "black"),
+        legend.title = element_blank(),
+        legend.position = "none",
+        legend.text = element_text(size = 20),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"),
+        panel.grid.minor = element_blank())
+
+context_correlation_TD <- ggplot(filter(C2P_PredictedData, Diagnosis == "Typical Development"), aes(x = x_jitter, y = Estimate, color = ID)) +
+  geom_point(size = 4) +
+  geom_line(aes(group = ID)) +
+  scale_x_continuous(limits = c(0.75, 3.25), breaks = 1:3, labels = levels(C2P_PredictedData$Condition)) +
+  guides(color = guide_legend(reverse=TRUE), fill = guide_legend(reverse=TRUE)) +
+  scale_color_manual(values = viridis(n = 20)) +
+  ggtitle('Typical Development Group') +
+  ylim(c(0, 1.5)) +
+  ylab('Child Response Latency (seconds)') +
+  xlab(' ') +
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 17, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 17, color = "black"),
+        legend.title = element_blank(),
+        legend.position = "none",
+        legend.text = element_text(size = 20),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"),
+        panel.grid.minor = element_blank())
+
+context_correlation <- plot_grid(context_correlation_ASD,
+          context_correlation_TD, nrow = 2)
+```
+
+
+## Child Overlap Estimates
+```{r, eval = FALSE}
+d <- d %>% mutate(
+  overlapping = ifelse(Latency > 0, 0, 1),
+  overlapping_child = ifelse(SelfChild2 > 0, 0, 1),
+  overlapping_adult = ifelse(SelfAdult2 > 0, 0, 1)
+)
+
+Overlapping_f1 <- bf(
+  overlapping ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task | r | Visit))
+
+priorChild_overlapping <- c(
+  prior(normal(0, 1), class = b),
+  prior(normal(0,0.3), class = sd),
+  prior(lkj(3), class = cor)
+)
+
+OverlappingChild_m <- brm(
+  Overlapping_f1,
+  subset(d, InterTurn == "Child2Adult"),
+  family = bernoulli(),
+  prior = priorChild_overlapping,
+  sample_prior = T,
+  file = here("models", "OverlappingChild_m"),
+  backend = "cmdstanr",
+  iter = 4000,
+  warmup = 500,
+  init = 0,
+  chains = 2,
+  cores = 64,
+  control = list(adapt_delta = 0.90, max_treedepth = 10),
+  stan_model_args = list(stanc_options = list("O1"))
+)
+
+pp_check(OverlappingChild_m, ndraws = 100)
+```
+
+### Hypothesis Tests
+```{r}
+HypothesisResultsChildOverlaps <- extract_all_hypothesis_tests_m1_overlaps(OverlappingChild_m)
+
+#write.csv(HypothesisResultsChildOverlaps, 'stats_for_paper/bernoulli_overlaps_stats_for_paper.csv')
+```
+
+# Adult Response Latencies
+```{r, eval = FALSE}
+AdultLatency_m1 <- brm(
+    Latency_f1,
+    subset(d, InterTurn == "Adult2Child"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = T,
+    backend = "cmdstanr",
+    iter = 2000,
+    warmup = 500,
+    init = 0,
+    chains = 4,
+    cores = 64,
+    file = here::here("models","AdultLatency_m1"),
+    control = list(adapt_delta = 0.95, max_treedepth = 18),
+    stan_model_args = list(stanc_options = list("O1")))
+
+pp_check(AdultLatency_m1, ndraws = 100)
+```
+
+## Hypothesis Tests
+```{r}
+HypothesisResultsAdultlatenciesModel1 <- extract_all_hypothesis_tests_m1_adult(AdultLatency_m1)
+#write.csv(HypothesisResultsAdultlatenciesModel1, 'stats_for_paper/model1_adult_stats_for_paper.csv')
+```
+
+## Visualisation of Model Estimates
+```{r}
+newdata <- subset(d, InterTurn == "Adult2Child") %>%
+  group_by(ID, Diagnosis, Task, Familiarity, Visit) %>%
+  dplyr::summarise(n = n()) %>%
+  select(-n) 
+
+C2P_PredictedData <- as_tibble(predict(AdultLatency_m1, newdata = newdata)) %>%
+  mutate(Visit = newdata$Visit) %>%
+  mutate(Diagnosis = newdata$Diagnosis) %>%
+  mutate(ID = newdata$ID) %>%
+  mutate(Familiarity = newdata$Familiarity) %>%
+  mutate(Task = newdata$Task) %>%
+  mutate(size = Q97.5-Q2.5) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  group_by(Diagnosis, ID, Familiarity, Task) %>%
+  dplyr::summarise(Estimate = mean(Estimate)) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+Posterior_df <- as_draws_df(AdultLatency_m1)
+
+condition_posterior_TDC_MG <- Posterior_df[,"b_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "MatchingGame",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_ASD_MG <- Posterior_df[,"b_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "MatchingGame",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_TDC_Q_F <- Posterior_df[,"b_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "Questions",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_ASD_Q_F <- Posterior_df[,"b_DiagnosisASD:TaskQuestions:FamiliarityFamiliar"] %>%
+  mutate(Familiarity = "Familiar",
+         Task = "Questions",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskQuestions:FamiliarityFamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+condition_posterior_TDC_Q_UF <- Posterior_df[,"b_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar"] %>%
+  mutate(Familiarity = "Unfamiliar",
+         Task = "Questions",
+         Diagnosis = "TDC") %>%
+  rename("Estimate" = `b_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent"))) 
+
+condition_posterior_ASD_Q_UF <- Posterior_df[,"b_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar"] %>%
+  mutate(Familiarity = "Unfamiliar",
+         Task = "Questions",
+         Diagnosis = "ASD") %>%
+  rename("Estimate" = `b_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar`) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent")))
+
+posteriors <- rbind(condition_posterior_ASD_MG, condition_posterior_TDC_MG,
+      condition_posterior_ASD_Q_F, condition_posterior_TDC_Q_F, 
+      condition_posterior_ASD_Q_UF, condition_posterior_TDC_Q_UF)
+
+Model1_Plot_Adult_Conditions <- ggplot() +
+  geom_boxplot(aes(Condition, Estimate, color = Diagnosis, fill = Diagnosis), filter(posteriors, Diagnosis == "Autism Group"), width = 0.05, color = "black", position = position_nudge(x = -0.30), alpha = 0.9, outliers = F, show.legend = T) +
+  geom_boxplot(aes(Condition, Estimate, color = Diagnosis, fill = Diagnosis), filter(posteriors, Diagnosis == "Typical Development"), width = 0.05, color = "black", position = position_nudge(x = -0.10), alpha = 0.9, outliers = F, show.legend = T) +
+  geom_point(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#009E73", color = "#009E73", alpha = 0.7, data = filter(C2P_PredictedData, Diagnosis == "Autism Group"), size = 2, position = position_nudge(x = -.22)) + 
+  geom_point(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#CC79A7", color = "#CC79A7", alpha = 0.7, data = filter(C2P_PredictedData, Diagnosis == "Typical Development"), size = 2, position = position_nudge(x = -.18)) + 
+  geom_half_violin(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#009E73", color = "black", alpha = 0.9, data = filter(posteriors, Diagnosis == "Autism Group"), side = "r", position = position_nudge(x = 0), adjust = 1.7) +
+  geom_half_violin(aes(Condition, Estimate, fill = Diagnosis, color = Diagnosis), fill = "#CC79A7", color = "black", alpha = 0.9, data = filter(posteriors, Diagnosis == "Typical Development"), side = "r", position = position_nudge(x = 0), adjust = 1.7) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  xlab(' ') +
+  coord_flip() +
+  ylab('Average Adult Response Latency (seconds)') +
+  guides(color = guide_legend(reverse=TRUE), fill = guide_legend(reverse=TRUE)) +
+  theme_bw() + 
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_text(size = 15, color = "black"),
+        legend.title = element_blank(),
+        legend.position = c(0.25, 0.92),
+        legend.key.size = unit(3, "lines"),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 15, color = "black"),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        panel.border = element_blank())
+
+Model1_Plot_Adult_Conditions
+```
+
+## Adult Overlap Estimates
+```{r}
+OverlappingAdult_m <- brm(
+  Overlapping_f1,
+  subset(d, InterTurn == "Adult2Child"),
+  family = bernoulli(),
+  prior = priorChild_overlapping,
+  sample_prior = T,
+  backend = "cmdstanr",
+  iter = 4000,
+  warmup = 500,
+  init = 0,
+  file = here("models", "OverlappingAdult_m"),
+  chains = 2,
+  cores = 64,
+  control = list(adapt_delta = 0.99, max_treedepth = 20),
+  stan_model_args = list(stanc_options = list("O1"))
+)
+
+pp_check(OverlappingAdult_m, ndraws = 100)
+```
+
+### Hypothesis Tests
+```{r}
+HypothesisResultsAdultOverlaps <- extract_all_hypothesis_tests_m1_overlaps_adults(OverlappingAdult_m)
+
+#write.csv(HypothesisResultsAdultOverlaps, 'stats_for_paper/bernoulli_adultoverlaps_stats_for_paper.csv')
+```

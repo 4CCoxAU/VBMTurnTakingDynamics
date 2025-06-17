@@ -1,0 +1,407 @@
+---
+title: "04_models_RQ4"
+output: html_document
+date: "2025-05-21"
+editor_options: 
+  chunk_output_type: console
+---
+
+# Child Latencies and Predictability
+```{r, eval = FALSE}
+predictabilityoverviewacrossconditions <- d %>%
+  group_by(Task,Familiarity, Diagnosis) %>%
+  filter(InterTurn == "Child2Adult") %>%
+  dplyr::summarise(OtherPredictability_mean = mean(OtherPredictability),
+                   OtherPredictability_sd = sd(OtherPredictability, na.rm = T),
+                   OwnPredictability_mean = mean(OwnPredictability),
+                   OwnPredictability_sd = sd(OwnPredictability, na.rm = T)) %>%
+  mutate(OtherPredictability = paste(round(OtherPredictability_mean, 2), "(", round(OtherPredictability_sd, 2), ")")) %>%
+  mutate(OwnPredictability = paste(round(OwnPredictability_mean, 2), "(", round(OwnPredictability_sd, 2), ")")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Convo With Experimenter", "Convo With Parent", "Matching With Parent"))) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  ungroup() %>%
+  #select(-OtherPredictability_mean, OtherPredictability_sd, OwnPredictability_mean, OwnPredictability_sd, -Task, -Familiarity) %>%
+  select(Condition, Diagnosis, OtherPredictability, OwnPredictability)
+
+xtable(predictabilityoverviewacrossconditions)
+
+Latency_ID_pred_f1 <- bf(
+  Latency ~ 0 + Diagnosis:Task:Familiarity + 
+    Diagnosis:Task:Familiarity:LanguageS_scaled + 
+    Diagnosis:Task:Familiarity:LanguageS_scaled:OwnPredictability +
+    Diagnosis:Task:Familiarity:LanguageS_scaled:OtherPredictability + 
+    Diagnosis:Task:Familiarity:OwnPredictability +
+    Diagnosis:Task:Familiarity:OtherPredictability + 
+    Diagnosis:Task:Familiarity:AwarenessS_scaled + 
+    Diagnosis:Task:Familiarity:MotivationS_scaled + 
+    Diagnosis:Task:Familiarity:CognitionS_scaled + 
+    Diagnosis:Task:Familiarity:MotorS_scaled + 
+    (0 + Task:Familiarity + Task:Familiarity:OtherPredictability + Task:Familiarity:OwnPredictability | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit), 
+  sigma ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)) +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit),
+  beta ~ 0 + Diagnosis:Task:Familiarity + 
+    (0 + Task:Familiarity | p | gr(ID, by = Diagnosis))  +  
+    (0 + Diagnosis:Task:Familiarity | r | Visit))
+
+priorChild <- c(
+  prior(normal(1, 1), class = b),
+  prior(normal(0, 0.3), class = sd),
+  prior(normal(0, 1), class = b, dpar = beta),
+  prior(normal(0, 0.1), class = sd, dpar = beta),
+  prior(normal(0, 1), class = b, dpar = sigma),
+  prior(normal(0, 0.1), class = sd, dpar = sigma),
+  prior(lkj(2), class = cor)
+)
+
+ChildLatency_m3_pred <- brm(
+    Latency_ID_pred_f1,
+    data = subset(d, InterTurn == "Child2Adult"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = T,
+    backend = "cmdstanr",
+    iter = 3000,
+    warmup = 500,
+    init = 0,
+    chains = 2,
+    cores = 64,
+    file = here::here("models","ChildLatency_m3_predJulyJuly"),
+    control = list(adapt_delta = 0.90, max_treedepth = 15))
+
+pp_check(ChildLatency_m3_pred, ndraws = 100)
+```
+
+## Visualisation of Model Estimates, Other Predictability
+```{r}
+d_pred_newdata <- d %>%
+  group_by(ID, Task, Familiarity, Diagnosis, Visit) %>%
+  data_grid(OtherPredictability = seq_range(d$OtherPredictability, n = 20)) %>%
+  mutate(LanguageS_scaled = mean(d$LanguageS_scaled, na.rm = T)) %>%
+  mutate(OwnPredictability = mean(d$OwnPredictability, na.rm = T)) %>%
+  mutate(AwarenessS_scaled = mean(d$AwarenessS_scaled, na.rm = T)) %>%
+  mutate(MotivationS_scaled = mean(d$MotivationS_scaled, na.rm = T)) %>%
+  mutate(CognitionS_scaled = mean(d$CognitionS_scaled, na.rm = T)) %>%
+  mutate(MotorS_scaled = mean(d$MotorS_scaled, na.rm = T)) %>%
+  filter(ID %in% unique(ChildLatency_m3_pred$data$ID))
+
+pred_data <- add_predicted_draws(ChildLatency_m3_pred,newdata = d_pred_newdata, allow_new_levels = T, value = ".prediction", ndraws = 100)
+
+OtherPredictabilityPlotData <- pred_data %>%
+  group_by(ID, Task, Familiarity, Diagnosis, OtherPredictability) %>%
+  dplyr::summarise(mean = mean(.prediction)) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+OtherPredictabilityPlot <- OtherPredictabilityPlotData %>%
+  ggplot() +
+  geom_smooth(aes(x = OtherPredictability, y = mean, color = Diagnosis, group = ID), method = "lm", linewidth = 0.15, alpha = 0.6, se = FALSE, show.legend = T) +
+  geom_smooth(aes(x = OtherPredictability, y = mean, color = Diagnosis), linewidth = 2.5, method = "lm", se = FALSE, show.legend = FALSE) +
+  facet_wrap(~ Condition) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  guides(color = guide_legend(reverse=TRUE, override.aes = list(alpha = 1, linewidth = 3))) +
+  scale_y_continuous(limits = c(0, 1.8), breaks = c(-1, -0.5, 0, 0.5, 1, 1.5, 2)) +
+  scale_x_continuous(limits = c(-2.5, 2.5), breaks = c(-2, -1, 0, 1, 2)) +
+  #ggtitle('Child Response Latency with Adult Utterance Predictability') +
+  ylab('Child Response Latency (seconds)') +
+  xlab('Predictability of Previous Adult Utterance (z-score)') +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_blank(),
+        #axis.ticks.x = element_blank(),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_blank(),
+        legend.title = element_blank(),
+        #axis.line.y =  element_blank(),
+        legend.position = c(0.3, 0.9),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(2, "lines"),
+        #axis.line.x =  element_blank(),
+        panel.border = element_blank(),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 25, color = "black"))
+```
+
+## Visualisation of Model Estimates, Own Predictability
+```{r}
+d_pred_newdata <- d %>%
+  group_by(ID, Task, Familiarity, Diagnosis, Visit) %>%
+  data_grid(OwnPredictability = seq_range(d$OwnPredictability, n = 25)) %>%
+  mutate(LanguageS_scaled = mean(d$LanguageS_scaled, na.rm = T)) %>%
+  mutate(OtherPredictability = mean(d$OtherPredictability, na.rm = T)) %>%
+  mutate(AwarenessS_scaled = mean(d$AwarenessS_scaled, na.rm = T)) %>%
+  mutate(MotivationS_scaled = mean(d$MotivationS_scaled, na.rm = T)) %>%
+  mutate(CognitionS_scaled = mean(d$CognitionS_scaled, na.rm = T)) %>%
+  mutate(MotorS_scaled = mean(d$MotorS_scaled, na.rm = T)) %>%
+  filter(ID %in% unique(ChildLatency_m3_pred$data$ID))
+  
+pred_data <- add_predicted_draws(object = ChildLatency_m3_pred, 
+                newdata = d_pred_newdata, allow_new_levels = T,
+                value = ".prediction", ndraws = 100)
+
+PredictabilityPlotData <- pred_data %>%
+  group_by(ID, Task, Familiarity, Diagnosis, OwnPredictability) %>%
+  dplyr::summarise(mean = mean(.prediction)) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+OwnPredictabilityPlot <- PredictabilityPlotData %>%
+  ggplot() +
+  geom_smooth(aes(x = OwnPredictability, y = mean, color = Diagnosis, group = ID), method = "lm", linewidth = 0.15, alpha = 0.4, se = FALSE, show.legend = T) +
+  geom_smooth(aes(x = OwnPredictability, y = mean, color = Diagnosis), linewidth = 2.5, se = FALSE, method = "lm", show.legend = F) +
+  facet_wrap(~ Condition) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  scale_y_continuous(limits = c(0, 1.8), breaks = c(-1, -0.5, 0, 0.5, 1, 1.5, 2)) +
+  scale_x_continuous(limits = c(-2.5, 2.5), breaks = c(-2, -1, 0, 1, 2)) +
+  ylab('Child Response Latency (seconds)') +
+  xlab('Predictability of Own Utterance (z-score)') +
+  guides(color = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1))) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.title.y = element_blank(),
+        #axis.ticks.y = element_blank(), 
+        axis.text.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        legend.position = "none",
+        legend.background = element_rect(fill = "transparent", color = NA),
+        panel.border = element_blank(),
+        legend.text = element_text(size = 20),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_blank())
+
+OwnOtherPredictability <- cowplot::plot_grid(OtherPredictabilityPlot, OwnPredictabilityPlot, nrow = 2)
+OwnOtherPredictability
+
+combined_plot <- plot_grid(
+  OtherPredictabilityPlot, OwnPredictabilityPlot,
+  ncol = 1,
+  align = 'v',
+  axis = 'l',
+  rel_heights = c(1, 1)
+)
+
+combined_plot <- plot_grid(
+  OtherPredictabilityPlot, OwnPredictabilityPlot,
+  ncol = 1,
+  align = 'v',
+  axis = 'l',
+  rel_heights = c(1, 1)
+)
+
+OwnOtherPredictability <- ggdraw(clip = "off") +
+  draw_plot(combined_plot, x = 0.02) +
+  draw_text(
+    "Child Response Latency (seconds)",
+    x = 0.01,                   
+    y = 0.5,                    
+    angle = 90,                 
+    vjust = 0.5,                
+    size = 20                   
+  )
+OwnOtherPredictability
+```
+
+## Hypothesis Tests
+```{r}
+PredictabilityComparisonsHypothesesFull <- extract_all_hypothesis_tests_m3_child(ChildLatency_m3_pred)
+
+#write.csv(PredictabilityComparisonsHypothesesFull, 'stats_for_paper/model3_Child_Predictability_stats_for_paper.csv')
+```
+
+
+# Adult Latencies and Predictability
+```{r}
+  AdultLatency_m3_pred <- brm(
+    Latency_ID_pred_f1,
+    subset(d, InterTurn == "Adult2Child"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = T,
+    backend = "cmdstanr",
+    iter = 3000,
+    warmup = 500,
+    init = 0,
+    chains = 2,
+    cores = 64,
+    file = here::here("models","AdultLatency_m3_predJuly"),
+    control = list(adapt_delta = 0.90, max_treedepth = 15),
+    stan_model_args = list(stanc_options = list("O1"))
+  )
+pp_check(AdultLatency_m3_pred, ndraws = 100)
+```
+
+## Visualisation of Model Estimates, Other Predictability
+```{r}
+d_pred_newdata <- d %>%
+  group_by(ID, Task, Familiarity, Diagnosis, Visit) %>%
+  data_grid(OtherPredictability = seq_range(d$OtherPredictability, n = 25)) %>%
+  mutate(LanguageS_scaled = mean(d$LanguageS_scaled, na.rm = T)) %>%
+  mutate(OwnPredictability = mean(d$OwnPredictability, na.rm = T)) %>%
+  mutate(AwarenessS_scaled = mean(d$AwarenessS_scaled, na.rm = T)) %>%
+  mutate(MotivationS_scaled = mean(d$MotivationS_scaled, na.rm = T)) %>%
+  mutate(CognitionS_scaled = mean(d$CognitionS_scaled, na.rm = T)) %>%
+  mutate(MotorS_scaled = mean(d$MotorS_scaled, na.rm = T)) %>%
+  filter(ID %in% unique(AdultLatency_m3_pred$data$ID))
+  
+pred_data <- add_predicted_draws(object = AdultLatency_m3_pred, 
+                newdata = d_pred_newdata, allow_new_levels = T,
+                value = ".prediction", ndraws = 100)
+
+OtherPredictabilityPlotData <- pred_data %>%
+  group_by(ID, Task, Familiarity, Diagnosis, OtherPredictability) %>%
+  dplyr::summarise(mean = mean(.prediction)) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+OtherPredictabilityPlot <- OtherPredictabilityPlotData %>%
+  ggplot() +
+  geom_smooth(aes(x = OtherPredictability, y = mean, color = Diagnosis, group = ID), method = "lm", linewidth = 0.15, alpha = 0.6, se = FALSE, show.legend = T) +
+  geom_smooth(aes(x = OtherPredictability, y = mean, color = Diagnosis), linewidth = 2.5, method = "lm", se = FALSE, show.legend = FALSE) +
+  facet_wrap(~ Condition) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  guides(color = guide_legend(reverse=TRUE, override.aes = list(alpha = 1, linewidth = 3))) +
+  scale_y_continuous(limits = c(0, 1.8), breaks = c(-1, -0.5, 0, 0.5, 1, 1.5, 2)) +
+  scale_x_continuous(limits = c(-2.5, 2.5), breaks = c(-2, -1, 0, 1, 2)) +
+  #ggtitle('Child Response Latency with Adult Utterance Predictability') +
+  ylab('Adult Response Latency (seconds)') +
+  xlab('Predictability of Previous Child Utterance (z-score)') +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_blank(),
+        #axis.ticks.x = element_blank(),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_blank(),
+        legend.title = element_blank(),
+        #axis.line.y =  element_blank(),
+        legend.position = c(0.3, 0.9),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(2, "lines"),
+        #axis.line.x =  element_blank(),
+        panel.border = element_blank(),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 25, color = "black"))
+```
+
+## Visualisation of Model Estimates, Own Predictability
+```{r}
+d_pred_newdata <- d %>%
+  group_by(ID, Task, Familiarity, Diagnosis, Visit) %>%
+  data_grid(OwnPredictability = seq_range(d$OwnPredictability, n = 25)) %>%
+  mutate(LanguageS_scaled = mean(d$LanguageS_scaled, na.rm = T)) %>%
+  mutate(OtherPredictability = mean(d$OtherPredictability, na.rm = T)) %>%
+  mutate(AwarenessS_scaled = mean(d$AwarenessS_scaled, na.rm = T)) %>%
+  mutate(MotivationS_scaled = mean(d$MotivationS_scaled, na.rm = T)) %>%
+  mutate(CognitionS_scaled = mean(d$CognitionS_scaled, na.rm = T)) %>%
+  mutate(MotorS_scaled = mean(d$MotorS_scaled, na.rm = T)) %>%
+  filter(ID %in% unique(ChildLatency_m3_pred$data$ID))
+  
+pred_data <- add_predicted_draws(object = AdultLatency_m3_pred, 
+                newdata = d_pred_newdata, allow_new_levels = T,
+                value = ".prediction", ndraws = 100)
+
+PredictabilityPlotData <- pred_data %>%
+  group_by(ID, Task, Familiarity, Diagnosis, OwnPredictability) %>%
+  dplyr::summarise(mean = mean(.prediction)) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development")) %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+OwnPredictabilityPlot <- PredictabilityPlotData %>%
+  ggplot() +
+  geom_smooth(aes(x = OwnPredictability, y = mean, color = Diagnosis, group = ID), method = "lm", linewidth = 0.15, alpha = 0.4, se = FALSE, show.legend = T) +
+  geom_smooth(aes(x = OwnPredictability, y = mean, color = Diagnosis), linewidth = 2.5, se = FALSE, method = "lm", show.legend = F) +
+  facet_wrap(~ Condition) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  scale_y_continuous(limits = c(0, 1.8), breaks = c(-1, -0.5, 0, 0.5, 1, 1.5, 2)) +
+  scale_x_continuous(limits = c(-2.5, 2.5), breaks = c(-2, -1, 0, 1, 2)) +
+  ylab('Adult Response Latency (seconds)') +
+  xlab('Predictability of Own Utterance (z-score)') +
+  guides(color = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1))) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.title.y = element_blank(),
+        #axis.ticks.y = element_blank(), 
+        axis.text.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        legend.position = "none",
+        legend.background = element_rect(fill = "transparent", color = NA),
+        panel.border = element_blank(),
+        legend.text = element_text(size = 20),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_blank())
+
+OwnOtherPredictabilityAdult <- cowplot::plot_grid(OtherPredictabilityPlot, OwnPredictabilityPlot, nrow = 2)
+OwnOtherPredictabilityAdult
+
+
+# Combine plots with plot_grid
+combined_plot <- plot_grid(
+  OtherPredictabilityPlot, OwnPredictabilityPlot,
+  ncol = 1,                 # Stack plots vertically
+  align = 'v',              # Align plots vertically
+  axis = 'l',              # Align plots on the left edge
+  rel_heights = c(1, 1)    # Equal heights for both plots
+)
+
+# Combine the plots
+combined_plot <- plot_grid(
+  OtherPredictabilityPlot, OwnPredictabilityPlot,
+  ncol = 1,
+  align = 'v',
+  axis = 'l',
+  rel_heights = c(1, 1)
+)
+
+# Create the final plot with adjusted y-axis label
+OwnOtherPredictabilityAdult <- ggdraw(clip = "off") +  # Important: turn off clipping
+  draw_plot(combined_plot, x = 0.02) +  # Shift plot right to make room for label
+  draw_text(
+    "Adult Response Latency (seconds)",
+    x = 0.01,                    # Move label more to the left
+    y = 0.5,                     # Center vertically
+    angle = 90,                  # Rotate text
+    vjust = 0.5,                 # Center the text on its position
+    size = 20                    # Adjust text size if needed
+  )
+OwnOtherPredictabilityAdult
+```
+
+## Hypothesis Tests
+```{r}
+PredictabilityComparisonsHypothesesFull <- extract_all_hypothesis_tests_m3_adult(AdultLatency_m3_pred)
+
+#write.csv(PredictabilityComparisonsHypothesesFull, 'stats_for_paper/model3_Adult_Predictability_stats_for_paper.csv')
+```
+

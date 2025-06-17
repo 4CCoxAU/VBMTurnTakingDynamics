@@ -1,0 +1,767 @@
+---
+title: "07_modelchecks"
+output: html_document
+date: "2025-05-21"
+---
+
+# Model Checks 
+
+## Prior and Posterior Predictive Checks
+```{r}
+ChildLatency_m1_prior <- brm(
+    Latency_f1,
+    subset(d, InterTurn == "Child2Adult"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = "only",
+    backend = "cmdstanr",
+    iter = 1000,
+    init = 0,
+    chains = 2,
+    cores = 2,
+    file = here("VBMTurnTakingFiles", "models","ChildLatency_m1_prior"),
+    control = list(adapt_delta = 0.90, max_treedepth = 10),
+    stan_model_args = list(stanc_options = list("O1"))
+  )
+
+ChildLatency_m2_ID_prior <- brm(
+    Latency_ID_f1,
+    data = subset(d, InterTurn == "Child2Adult"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = "only",
+    backend = "cmdstanr",
+    iter = 1000,
+    init = 0,
+    chains = 2,
+    cores = 2,
+    file = here("VBMTurnTakingFiles", "models","ChildLatency_m2_ID_prior"),
+    control = list(adapt_delta = 0.90, max_treedepth = 10),
+    stan_model_args = list(stanc_options = list("O1")))
+
+ChildLatency_m3_pred_prior <- brm(
+    Latency_ID_pred_f1,
+    data = subset(d, InterTurn == "Child2Adult"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = "only",
+    backend = "cmdstanr",
+    iter = 1000,
+    init = 0,
+    chains = 2,
+    cores = 2,
+    file = here("VBMTurnTakingFiles", "models","ChildLatency_m3_pred_prior"),
+    control = list(adapt_delta = 0.90, max_treedepth = 10),
+    stan_model_args = list(stanc_options = list("O1")))
+
+m_dyad_coupling_adaptation_m4_prior <- brm(
+  DyadicC2P + DyadicP2C + set_rescor(FALSE),
+  family = exgaussian(),
+  data = d_dyadic,
+  prior = priors3,
+  sample_prior = "only",
+  backend = "cmdstanr",
+  iter = 1000,
+  init = 0,
+  chains = 2,
+  cores = 2,
+  file = here("VBMTurnTakingFiles", "models","m_dyad_coupling_adaptation_m4_prior"),
+  control = list(adapt_delta = 0.90, max_treedepth = 10),
+  stan_model_args = list(stanc_options = list("O1")))
+
+
+PriorCheck_m1 <- pp_check(ChildLatency_m1_prior, ndraws = 100) +
+  ggtitle('Prior Predictive Check for Child Model 1') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        #axis.text.y = element_text(size = 11, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+PriorCheck_m2 <- pp_check(ChildLatency_m2_ID_prior, ndraws = 100) +
+  ggtitle('Prior Predictive Check for Child Model 2') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        #axis.text.y = element_text(size = 11, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+
+PriorCheck_m3 <- pp_check(ChildLatency_m3_pred_prior, ndraws = 100) +
+  ggtitle('Prior Predictive Check for Child Model 3') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        #axis.text.y = element_text(size = 11, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+PriorCheck_m4 <- pp_check(m_dyad_coupling_adaptation_m4_prior, ndraws = 100, resp = "ChildLatency") +
+  ggtitle('Prior Predictive Check for Child Model 4') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        #axis.text.y = element_text(size = 11, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+PosteriorCheck_m1 <- pp_check(ChildLatency_m1, ndraws = 100) +
+  ggtitle('Posterior Predictive Check for Child Model 1') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+PosteriorCheck_m2 <- pp_check(ChildLatency_m2_ID, ndraws = 100) +
+  ggtitle('Posterior Predictive Check for Child Model 2') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+PosteriorCheck_m3 <- pp_check(ChildLatency_m3_pred, ndraws = 100) +
+  ggtitle('Posterior Predictive Check for Child Model 3') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+PosteriorCheck_m4 <- pp_check(m_dyad_coupling_adaptation, ndraws = 100, resp = "ChildLatency") +
+  ggtitle('Posterior Predictive Check for Child Model 4') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+AdultLatency_m1_prior <- brm(
+    Latency_f1,
+    subset(d, InterTurn == "Adult2Child"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = "only",
+    backend = "cmdstanr",
+    iter = 1000,
+    init = 0,
+    chains = 2,
+    cores = 2,
+    file = here("VBMTurnTakingFiles", "models","AdultLatency_m1_prior"),
+    control = list(adapt_delta = 0.90, max_treedepth = 10),
+    stan_model_args = list(stanc_options = list("O1"))
+  )
+
+AdultLatency_m2_ID_prior <- brm(
+    Latency_ID_f1,
+    data = subset(d, InterTurn == "Adult2Child"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = "only",
+    backend = "cmdstanr",
+    iter = 1000,
+    init = 0,
+    chains = 2,
+    cores = 2,
+    file = here("VBMTurnTakingFiles", "models","AdultLatency_m2_ID_prior"),
+    control = list(adapt_delta = 0.90, max_treedepth = 10),
+    stan_model_args = list(stanc_options = list("O1")))
+
+AdultLatency_m3_pred_prior <- brm(
+    Latency_ID_pred_f1,
+    data = subset(d, InterTurn == "Adult2Child"),
+    family = exgaussian,
+    prior = priorChild,
+    sample_prior = "only",
+    backend = "cmdstanr",
+    iter = 1000,
+    init = 0,
+    chains = 2,
+    cores = 2,
+    file = here("VBMTurnTakingFiles", "models","AdultLatency_m3_pred_prior"),
+    control = list(adapt_delta = 0.90, max_treedepth = 10),
+    stan_model_args = list(stanc_options = list("O1")))
+
+PriorCheck_m1_Adult <- pp_check(AdultLatency_m1_prior, ndraws = 100) +
+  ggtitle('Prior Predictive Check for Adult Model 1') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        #axis.text.y = element_text(size = 11, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+PriorCheck_m2_Adult <- pp_check(AdultLatency_m2_ID_prior, ndraws = 100) +
+  ggtitle('Prior Predictive Check for Adult Model 2') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        #axis.text.y = element_text(size = 11, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+
+PriorCheck_m3_Adult <- pp_check(AdultLatency_m3_pred_prior, ndraws = 100) +
+  ggtitle('Prior Predictive Check for Adult Model 3') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        #axis.text.y = element_text(size = 11, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+PriorCheck_m4_Adult <- pp_check(m_dyad_coupling_adaptation_m4_prior, ndraws = 100, resp = "AdultLatency") +
+  ggtitle('Prior Predictive Check for Adult Model 4') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        #axis.text.y = element_text(size = 11, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+PosteriorCheck_m1_Adult <- pp_check(AdultLatency_m1, ndraws = 100) +
+  ggtitle('Posterior Predictive Check for Adult Model 1') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+PosteriorCheck_m2_Adult <- pp_check(AdultLatency_m2_ID, ndraws = 100) +
+  ggtitle('Posterior Predictive Check for Adult Model 2') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+PosteriorCheck_m3_Adult <- pp_check(AdultLatency_m3_pred, ndraws = 100) +
+  ggtitle('Posterior Predictive Check for Adult Model 3') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+
+PosteriorCheck_m4_Adult <- pp_check(m_dyad_coupling_adaptation, ndraws = 100, resp = "AdultLatency") +
+  ggtitle('Posterior Predictive Check for Adult Model 4') +
+  xlab('Response Latency (sec)') +
+  xlim(c(-20, 20)) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5, size=18), 
+        axis.text.x = element_text(size = 13, color = "black"),
+        axis.title.x = element_text(size = 13, color = "black"),
+        axis.text.y = element_text(size = 0),
+        axis.ticks.y = element_line(linewidth = 0),
+        axis.title.y = element_text(size = 13, color = "black"),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 13, color = "black"))
+```
+
+## Prior-Posterior Update Plots
+```{r}
+#Let's create a function to make it easy to extract prior-posterior plots:
+create_posterior_plots <- function(model, plottitle) {
+  
+  Posterior <- as_draws_df(model)
+  
+  Intercepts <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_b), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`b_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_DiagnosisASD:TaskQuestions:FamiliarityFamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar`), fill="#f2cc84", alpha=0.8) +
+    ggtitle(paste0('Prior-Posterior Update Plots for ', plottitle)) +
+    xlab('Intercepts') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2, 3), limits = c(-2, 3)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+
+  Sigma <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_b_sigma), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`b_sigma_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_sigma_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_sigma_DiagnosisASD:TaskQuestions:FamiliarityFamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_sigma_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_sigma_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_sigma_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar`), fill="#21908CFF", alpha=0.8) +
+    xlab('Sigma') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2), limits = c(-2, 2)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+  
+  Beta <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_b_beta), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`b_beta_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_beta_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_beta_DiagnosisASD:TaskQuestions:FamiliarityFamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_beta_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_beta_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_beta_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar`), fill="#21908CFF", alpha=0.8) +
+    xlab('Beta') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2), limits = c(-1.5, 1.5)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+  
+  StandardDeviation <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(`prior_sd_ID__TaskMatchingGame:FamiliarityFamiliar:DiagnosisASD`), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`sd_ID__TaskMatchingGame:FamiliarityFamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`sd_ID__TaskMatchingGame:FamiliarityFamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`sd_ID__TaskQuestions:FamiliarityUnfamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`sd_ID__TaskQuestions:FamiliarityUnfamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.8) + 
+    geom_density(aes(`sd_ID__TaskQuestions:FamiliarityFamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`sd_ID__TaskQuestions:FamiliarityFamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.8) +
+    xlab('Subject Standard Deviation') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2), limits = c(-.25, 1)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+    
+  Correlation <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_cor_ID__1), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`cor_ID__TaskMatchingGame:FamiliarityFamiliar:DiagnosisASD__TaskQuestions:FamiliarityFamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.5) +
+    geom_density(aes(`cor_ID__TaskMatchingGame:FamiliarityFamiliar:DiagnosisASD__TaskQuestions:FamiliarityUnfamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.5) +
+    geom_density(aes(`cor_ID__TaskQuestions:FamiliarityFamiliar:DiagnosisASD__TaskQuestions:FamiliarityUnfamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.5) +
+    geom_density(aes(`cor_ID__TaskMatchingGame:FamiliarityFamiliar:DiagnosisTDC__TaskQuestions:FamiliarityFamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.5) +
+    geom_density(aes(`cor_ID__TaskMatchingGame:FamiliarityFamiliar:DiagnosisTDC__TaskQuestions:FamiliarityUnfamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.5) +
+    geom_density(aes(`cor_ID__TaskQuestions:FamiliarityFamiliar:DiagnosisTDC__TaskQuestions:FamiliarityUnfamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.5) +
+    xlab('Correlation') +
+    xlim(c(-2, 2)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+  
+  plot_grid <- cowplot::plot_grid(Intercepts, Sigma, Beta, StandardDeviation, Correlation, ncol = 1)
+}
+
+combined_plot_m1 <- plot_grid(create_posterior_plots(ChildLatency_m1, 'Child Latency, Model 1'), create_posterior_plots(AdultLatency_m1, 'Adult Latency, Model 1'), ncol = 2)
+combined_plot_m2 <- plot_grid(create_posterior_plots(ChildLatency_m2_ID, 'Child Latency, Model 2'), create_posterior_plots(AdultLatency_m2_ID, 'Adult Latency, Model 2'), ncol = 2)
+combined_plot_m3 <- plot_grid(create_posterior_plots(ChildLatency_m3_pred, 'Child Latency, Model 3'), create_posterior_plots(AdultLatency_m3_pred, 'Adult Latency, Model 3'), ncol = 2)
+```
+
+## Adapt the code for the multivariate model
+### Child Latency First...
+```{r}
+#Let's create a function to make it easy to extract prior-posterior plots:
+create_posterior_plots <- function(model, plottitle) {
+  
+  Posterior <- as_draws_df(model)
+  
+  Intercepts <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_b_ChildLatency), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`b_ChildLatency_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_ChildLatency_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_ChildLatency_DiagnosisASD:TaskQuestions:FamiliarityFamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_ChildLatency_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_ChildLatency_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_ChildLatency_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar`), fill="#f2cc84", alpha=0.8) +
+    ggtitle(paste0('Prior-Posterior Update Plots for ', plottitle)) +
+    xlab('Intercepts') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2, 3), limits = c(-2, 3)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+
+  Sigma <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_sigma_ChildLatency), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(sigma_ChildLatency), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(sigma_AdultLatency), fill="#21908CFF", alpha=0.8) +
+    xlab('Sigma') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2), limits = c(0, 1)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+  
+  Beta <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_beta_ChildLatency), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`beta_ChildLatency`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`beta_AdultLatency`), fill="#21908CFF", alpha=0.8) +
+    xlab('Beta') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2), limits = c(0, 2)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+  
+  StandardDeviation <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(`prior_sd_ID`), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`sd_ID__ChildLatency_TaskMatchingGame:FamiliarityFamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`sd_ID__ChildLatency_TaskMatchingGame:FamiliarityFamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`sd_ID__ChildLatency_TaskQuestions:FamiliarityUnfamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`sd_ID__ChildLatency_TaskQuestions:FamiliarityUnfamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.8) + 
+    geom_density(aes(`sd_ID__ChildLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`sd_ID__ChildLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.8) +
+    xlab('Subject Standard Deviation') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2), limits = c(-.25, 1)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+    
+  Correlation <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_cor_ID__1), fill="#440154FF", alpha=0.5) +
+    
+    geom_density(aes(`cor_ID__ChildLatency_TaskMatchingGame:FamiliarityFamiliar:DiagnosisASD__ChildLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.5) +
+    geom_density(aes(`cor_ID__ChildLatency_TaskMatchingGame:FamiliarityFamiliar:DiagnosisTDC__ChildLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.5) +
+    
+    geom_density(aes(`cor_ID__ChildLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisASD__ChildLatency_TaskQuestions:FamiliarityUnfamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.5) +
+  geom_density(aes(`cor_ID__ChildLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisTDC__ChildLatency_TaskQuestions:FamiliarityUnfamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.5) +
+    xlab('Correlation') +
+    xlim(c(-2, 2)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+  
+  plot_grid <- cowplot::plot_grid(Intercepts, Sigma, Beta, StandardDeviation, Correlation, ncol = 1)
+}
+
+combined_plot_m4_child <- create_posterior_plots(m_dyad_coupling_adaptation, 'Child Latency, Model 4')
+```
+
+### ... Then Adult Latency
+```{r}
+#Let's create a function to make it easy to extract prior-posterior plots:
+create_posterior_plots <- function(model, plottitle, output_file) {
+  
+  Posterior <- as_draws_df(m_dyad_coupling_adaptation)
+  tibble(value = variables(Posterior)) %>%
+    filter(str_detect(value, "cor"))
+  
+  Intercepts <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_b_AdultLatency), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`b_AdultLatency_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_AdultLatency_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_AdultLatency_DiagnosisASD:TaskQuestions:FamiliarityFamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_AdultLatency_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_AdultLatency_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_AdultLatency_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar`), fill="#f2cc84", alpha=0.8) +
+    ggtitle(paste0('Prior-Posterior Update Plots for ', plottitle)) +
+    xlab('Intercepts') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2, 3), limits = c(-2, 3)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+
+  Sigma <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_sigma_AdultLatency), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(sigma_ChildLatency), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(sigma_AdultLatency), fill="#21908CFF", alpha=0.8) +
+    xlab('Sigma') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2), limits = c(0, 1)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+  
+  Beta <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_beta_AdultLatency), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`beta_ChildLatency`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`beta_AdultLatency`), fill="#21908CFF", alpha=0.8) +
+    xlab('Beta') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2), limits = c(0, 2)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+  
+  StandardDeviation <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(`prior_sd_ID`), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`sd_ID__AdultLatency_TaskMatchingGame:FamiliarityFamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`sd_ID__AdultLatency_TaskMatchingGame:FamiliarityFamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`sd_ID__AdultLatency_TaskQuestions:FamiliarityUnfamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`sd_ID__AdultLatency_TaskQuestions:FamiliarityUnfamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.8) + 
+    geom_density(aes(`sd_ID__AdultLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`sd_ID__AdultLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.8) +
+    xlab('Subject Standard Deviation') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2), limits = c(-.25, 1)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+    
+  Correlation <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_cor_ID__1), fill="#440154FF", alpha=0.5) +
+    
+    geom_density(aes(`cor_ID__AdultLatency_TaskMatchingGame:FamiliarityFamiliar:DiagnosisASD__AdultLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.5) +
+    geom_density(aes(`cor_ID__AdultLatency_TaskMatchingGame:FamiliarityFamiliar:DiagnosisTDC__AdultLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.5) +
+    
+    geom_density(aes(`cor_ID__AdultLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisASD__AdultLatency_TaskQuestions:FamiliarityUnfamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.5) +
+  geom_density(aes(`cor_ID__AdultLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisTDC__AdultLatency_TaskQuestions:FamiliarityUnfamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.5) +
+    xlab('Correlation') +
+    xlim(c(-2, 2)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+
+    plot_grid <- cowplot::plot_grid(Intercepts, Sigma, Beta, StandardDeviation, Correlation, ncol = 1)
+  
+    ggsave(plot = plot_grid, file = output_file, width = 12, height = 10)
+}
+
+create_posterior_plots <- function(model, plottitle) {
+  
+  Posterior <- as_draws_df(model)
+  
+  Intercepts <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_b_AdultLatency), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`b_AdultLatency_DiagnosisTDC:TaskMatchingGame:FamiliarityFamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_AdultLatency_DiagnosisASD:TaskMatchingGame:FamiliarityFamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_AdultLatency_DiagnosisASD:TaskQuestions:FamiliarityFamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_AdultLatency_DiagnosisTDC:TaskQuestions:FamiliarityFamiliar`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`b_AdultLatency_DiagnosisTDC:TaskQuestions:FamiliarityUnfamiliar`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`b_AdultLatency_DiagnosisASD:TaskQuestions:FamiliarityUnfamiliar`), fill="#f2cc84", alpha=0.8) +
+    ggtitle(paste0('Prior-Posterior Update Plots for ', plottitle)) +
+    xlab('Intercepts') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2, 3), limits = c(-2, 3)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+
+  Sigma <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_sigma_AdultLatency), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(sigma_ChildLatency), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(sigma_AdultLatency), fill="#21908CFF", alpha=0.8) +
+    xlab('Sigma') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2), limits = c(0, 1)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+  
+  Beta <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_beta_AdultLatency), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`beta_ChildLatency`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`beta_AdultLatency`), fill="#21908CFF", alpha=0.8) +
+    xlab('Beta') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2), limits = c(0, 2)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+  
+  StandardDeviation <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(`prior_sd_ID`), fill="#440154FF", alpha=0.5) +
+    geom_density(aes(`sd_ID__AdultLatency_TaskMatchingGame:FamiliarityFamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`sd_ID__AdultLatency_TaskMatchingGame:FamiliarityFamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.8) +
+    geom_density(aes(`sd_ID__AdultLatency_TaskQuestions:FamiliarityUnfamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`sd_ID__AdultLatency_TaskQuestions:FamiliarityUnfamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.8) + 
+    geom_density(aes(`sd_ID__AdultLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.8) +
+    geom_density(aes(`sd_ID__AdultLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.8) +
+    xlab('Subject Standard Deviation') +
+    scale_x_continuous(breaks = c(-2, -1, 0, 1, 2), limits = c(-.25, 1)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+    
+  Correlation <- ggplot(Posterior) + theme_classic() +
+    geom_density(aes(prior_cor_ID__1), fill="#440154FF", alpha=0.5) +
+    
+    geom_density(aes(`cor_ID__AdultLatency_TaskMatchingGame:FamiliarityFamiliar:DiagnosisASD__AdultLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.5) +
+    geom_density(aes(`cor_ID__AdultLatency_TaskMatchingGame:FamiliarityFamiliar:DiagnosisTDC__AdultLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.5) +
+    
+    geom_density(aes(`cor_ID__AdultLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisASD__AdultLatency_TaskQuestions:FamiliarityUnfamiliar:DiagnosisASD`), fill="#f2cc84", alpha=0.5) +
+  geom_density(aes(`cor_ID__AdultLatency_TaskQuestions:FamiliarityFamiliar:DiagnosisTDC__AdultLatency_TaskQuestions:FamiliarityUnfamiliar:DiagnosisTDC`), fill="#21908CFF", alpha=0.5) +
+    xlab('Correlation') +
+    xlim(c(-2, 2)) +
+    theme(plot.title = element_text(hjust = 0.5, size=15), 
+          axis.text.x = element_text(size = 13, color = "black"),
+          axis.title.x = element_text(size = 13, color = "black"),
+          axis.text.y = element_text(size = 0),
+          axis.ticks.y = element_line(linewidth = 0),
+          axis.title.y = element_text(size = 0, color = "black"),
+          strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+          strip.text.x = element_text(size = 13, color = "black"))
+  
+  plot_grid <- cowplot::plot_grid(Intercepts, Sigma, Beta, StandardDeviation, Correlation, ncol = 1)
+}
+
+combined_plot_m4_adult <- create_posterior_plots(m_dyad_coupling_adaptation, 'Adult Latency, Model 4')
+```
+
+

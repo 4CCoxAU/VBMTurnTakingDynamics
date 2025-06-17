@@ -1,0 +1,368 @@
+---
+title: "05_models_RQ5"
+output: html_document
+date: "2025-05-21"
+editor_options: 
+  chunk_output_type: console
+---
+
+# Reciprocal Adaptation
+```{r}
+DyadicC2P <- bf(ChildLatency ~ 
+                           
+                          0 + Diagnosis:Task:Familiarity +
+                           
+                          Diagnosis:Task:Familiarity:PrevOtherLatency + Diagnosis:Task:Familiarity:PrevSelfLatency +
+                           
+                           (0 + Task:Familiarity + Task:Familiarity:PrevOtherLatency + Task:Familiarity:PrevSelfLatency | gr(ID, by = Diagnosis)),
+                           
+                         
+                         sigma ~ 0 + Diagnosis:Task:Familiarity + (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)))
+                           
+DyadicP2C <- bf(AdultLatency ~ 
+                           
+                          0 + Diagnosis:Task:Familiarity +
+                           
+                          Diagnosis:Task:Familiarity:AdultPrevOtherLatency + Diagnosis:Task:Familiarity:AdultPrevSelfLatency +
+                           
+                           (0 + Task:Familiarity + Task:Familiarity:AdultPrevOtherLatency + Task:Familiarity:AdultPrevSelfLatency | gr(ID, by = Diagnosis)),
+
+                         sigma ~ 0 + Diagnosis:Task:Familiarity + (0 + Task:Familiarity | p | gr(ID, by = Diagnosis)))
+                          
+priors3 <- c(prior(normal(0, 5), class = b, resp = AdultLatency),
+             prior(normal(0, 5), class = b, resp = ChildLatency),
+             prior(gamma(2, 2), class = beta, resp = ChildLatency),
+             prior(gamma(2, 2), class = beta, resp = AdultLatency),
+             prior(lkj(2), class = cor),
+             prior(normal(1, 5), class = sd, resp = ChildLatency),
+             prior(normal(1, 5), class = sd, resp = AdultLatency),
+             
+            prior(normal(0, .5), class = b, dpar = "sigma", resp = ChildLatency),
+            prior(normal(0, .5), class = sd, dpar = "sigma", resp = ChildLatency),
+             
+             prior(normal(0, .5), class = b, dpar = "sigma", resp = AdultLatency),
+             prior(normal(0, .5), class = sd, dpar = "sigma", resp = AdultLatency)
+)
+
+m_dyad_coupling_adaptation <- brm(
+  DyadicC2P + DyadicP2C + set_rescor(FALSE),
+  family = exgaussian(),
+  data = d_dyadic,
+  prior = priors3,
+  sample_prior = "yes",
+  iter = 2000,
+  init = 0,
+  warmup = 500,
+  cores = 64,
+  chains = 2,
+  backend = "cmdstanr",
+  file = here::here("models","m_dyad_coupling_adaptation"),
+  control = list(adapt_delta = .90, max_treedepth = 15),
+  save_pars = save_pars(all = TRUE))
+
+pp_check(m_dyad_coupling_adaptation, ndraws = 150, resp = "ChildLatency")
+pp_check(m_dyad_coupling_adaptation, ndraws = 150, resp = "AdultLatency")
+```
+
+## Child Latencies
+
+### Hypothesis Tests
+```{r}
+InterpersonalComparisonsHypothesesFull <- extract_all_hypothesis_tests_m4_interpersonal_child(m_dyad_coupling_adaptation)
+#write.csv(InterpersonalComparisonsHypothesesFull, 'stats_for_paper/model4_ChildInterpersonalAdjustmentComparisonsHypothesesFull_stats_for_paper.csv')
+
+SelfAdjustmentComparisonsHypothesesFull <- extract_all_hypothesis_tests_m4_self_child(m_dyad_coupling_adaptation)
+#write.csv(SelfAdjustmentComparisonsHypothesesFull, 'stats_for_paper/model4_ChildSelfAdjustmentComparisonsHypothesesFull_stats_for_paper.csv')
+```
+
+### Visualisation of Model Estimates, Interpersonal Adjustment
+```{r}
+d_dyadic_model_newdata <- d_dyadic %>%
+  group_by(ID, Task, Familiarity, Diagnosis) %>%
+  data_grid(PrevOtherLatency = seq_range(m_dyad_coupling_adaptation$data$PrevOtherLatency, n = 50)) %>%
+  mutate(PrevSelfLatency = mean(m_dyad_coupling_adaptation$data$PrevSelfLatency, na.rm = T))
+
+pred_data <- add_predicted_draws(object = m_dyad_coupling_adaptation, 
+                newdata = d_dyadic_model_newdata,
+                resp = "ChildLatency", value = ".prediction", ndraws = 50)
+
+dyadic_predicted_data <- pred_data %>%
+  group_by(ID, Task, Familiarity, Diagnosis, PrevOtherLatency) %>%
+  dplyr::summarise(mean = mean(.prediction)) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development"))  %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+InterpersonalAdjustmentPlot <- dyadic_predicted_data %>%
+  ggplot() +
+  geom_smooth(aes(x = PrevOtherLatency, y = mean, color = Diagnosis, group = ID), 
+              method = "lm", linewidth = 0.15, alpha = 0.4, se = FALSE, show.legend = T) +
+  geom_smooth(aes(x = PrevOtherLatency, y = mean, color = Diagnosis),  linewidth = 2.5, method = "lm", se = F, show.legend = F) +
+  facet_wrap(~ Condition) +
+  #ylim(c(-0)) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  scale_x_continuous(breaks = seq(0, 5, by = 1), limits = c(0, 3.5)) +
+  scale_y_continuous(breaks = c(-2, -1, 0, 1, 2), limits = c(0, 2)) +
+  #ggtitle("Turn-by-Turn Interpersonal Adjustment for Child Latencies") +
+  guides(fill = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1)),
+         color = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 2.5, fill = NA))) +
+  ylab('Child Response Latency (sec)') +
+  xlab('Previous Adult Response Latency (seconds)') +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_blank(),
+        #axis.ticks.x = element_blank(),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_blank(),
+        legend.title = element_blank(),
+        #axis.line.y =  element_blank(),
+        legend.position = c(0.3, 0.9),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(2, "lines"),
+        #axis.line.x =  element_blank(),
+        panel.border = element_blank(),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 25, color = "black"))
+InterpersonalAdjustmentPlot
+```
+
+### Visualisation of Model Estimates, Self Adjustment
+```{r}
+d_dyadic_model_newdata <- d_dyadic %>%
+  group_by(ID, Task, Familiarity, Diagnosis) %>%
+  data_grid(PrevSelfLatency = seq_range(d_dyadic$PrevSelfLatency, n = 50)) %>%
+  mutate(PrevOtherLatency = mean(d_dyadic$PrevOtherLatency, na.rm = T))
+
+pred_data <- add_predicted_draws(object = m_dyad_coupling_adaptation, 
+                newdata = d_dyadic_model_newdata,
+                resp = "ChildLatency", value = ".prediction", ndraws = 100)
+
+dyadic_predicted_data <- pred_data %>%
+  group_by(ID, Task, Familiarity, Diagnosis, PrevSelfLatency) %>%
+  dplyr::summarise(mean = mean(.prediction)) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development"))  %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+SelfAdjustmentPlot <- dyadic_predicted_data %>%
+  ggplot() +
+  geom_smooth(aes(x = PrevSelfLatency, y = mean, color = Diagnosis, group = ID), 
+              method = "lm", linewidth = 0.15, alpha = 0.4, se = FALSE) +
+  geom_smooth(aes(x = PrevSelfLatency, y = mean, color = Diagnosis), linewidth = 2.5, method = "lm", se = F) +
+  facet_wrap(~ Condition) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  #ggtitle('Turn-By-Turn Self Adjustment') +
+  ylab('Child Response Latency (sec)') +
+  xlab('Previous Child Response Latency (seconds)') +
+  scale_x_continuous(breaks = seq(0, 5, by = 1), limits = c(0, 3.5)) +
+  scale_y_continuous(limits = c(0, 2), breaks = c(-2, -1, 0, 1, 2)) +
+  guides(fill = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1)),
+         color = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1, fill = NA))) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.title.y = element_blank(),  # Remove y axis title
+        #axis.text.y = element_blank(),   # Remove y axis text
+        #axis.ticks.y = element_blank(),   # Remove y axis ticks
+        axis.text.y = element_text(size = 20, color = "black"),
+        #axis.title.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        legend.position = "none",
+        #legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        #legend.key.size = unit(3, "lines"),
+        panel.border = element_blank(),
+        legend.text = element_text(size = 20),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_blank())
+SelfAdjustmentPlot
+
+# Combine plots with plot_grid
+combined_plot <- plot_grid(
+  InterpersonalAdjustmentPlot, SelfAdjustmentPlot,
+  ncol = 1,                 # Stack plots vertically
+  align = 'v',              # Align plots vertically
+  axis = 'l',              # Align plots on the left edge
+  rel_heights = c(1, 1)    # Equal heights for both plots
+)
+
+# Combine the plots
+combined_plot <- plot_grid(
+  InterpersonalAdjustmentPlot, SelfAdjustmentPlot,
+  ncol = 1,
+  align = 'v',
+  axis = 'l',
+  rel_heights = c(1, 1)
+)
+
+# Create the final plot with adjusted y-axis label
+SelfAndInterpersonalAdjustmentPlots <- ggdraw(clip = "off") +  # Important: turn off clipping
+  draw_plot(combined_plot, x = 0.02) +  # Shift plot right to make room for label
+  draw_text(
+    "Child Response Latency (seconds)",
+    x = 0.01,                    # Move label more to the left
+    y = 0.5,                     # Center vertically
+    angle = 90,                  # Rotate text
+    vjust = 0.5,                 # Center the text on its position
+    size = 20                    # Adjust text size if needed
+  )
+
+
+
+```
+
+## Adult Latencies
+
+### Hypothesis Tests
+```{r}
+InterpersonalComparisonsHypothesesFull <- extract_all_hypothesis_tests_m4_interpersonal_adult(m_dyad_coupling_adaptation)
+#write.csv(InterpersonalComparisonsHypothesesFull, 'stats_for_paper/model4_AdultInterpersonalAdjustmentComparisonsHypothesesFull_stats_for_paper.csv')
+
+InterpersonalComparisonsHypothesesFull <- extract_all_hypothesis_tests_m4_self_adult(m_dyad_coupling_adaptation)
+#write.csv(SelfAdjustmentComparisonsHypothesesFull, 'stats_for_paper/model4_AdultSelfAdjustmentComparisonsHypothesesFull_stats_for_paper.csv')
+```
+
+### Visualisation of Model Estimates, Interpersonal Adjustment
+```{r}
+d_dyadic_model_newdata <- d_dyadic %>%
+  group_by(ID, Task, Familiarity, Diagnosis) %>%
+  data_grid(AdultPrevOtherLatency = seq_range(m_dyad_coupling_adaptation$data$AdultPrevOtherLatency, n = 50)) %>%
+  mutate(AdultPrevSelfLatency = mean(m_dyad_coupling_adaptation$data$AdultPrevSelfLatency, na.rm = T))
+
+pred_data <- add_predicted_draws(object = m_dyad_coupling_adaptation, 
+                newdata = d_dyadic_model_newdata,
+                resp = "AdultLatency", value = ".prediction")
+
+dyadic_predicted_data <- pred_data %>%
+  group_by(ID, Task, Familiarity, Diagnosis, AdultPrevOtherLatency) %>%
+  dplyr::summarise(mean = mean(.prediction)) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development"))  %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+InterpersonalAdjustmentPlotAdult <- dyadic_predicted_data %>%
+  ggplot() +
+  geom_smooth(aes(x = AdultPrevOtherLatency, y = mean, color = Diagnosis, group = ID), 
+              method = "lm", linewidth = 0.15, alpha = 0.4, se = FALSE, show.legend = T) +
+  geom_smooth(aes(x = AdultPrevOtherLatency, y = mean, color = Diagnosis),  linewidth = 2.5, method = "lm", se = F, show.legend = F) +
+  facet_wrap(~ Condition) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  scale_x_continuous(breaks = seq(0, 5, by = 1), limits = c(0, 3.5)) +
+  scale_y_continuous(breaks = c(-2, -1, 0, 1, 2)) +
+  guides(fill = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1)),
+         color = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1, fill = NA))) +
+  ylab('Adult Response Latency (seconds)') +
+  xlab('Previous Child Response Latency (seconds)') +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.text.y = element_text(size = 20, color = "black"),
+        axis.title.y = element_blank(),
+        legend.title = element_blank(),
+        legend.position = c(0.3, 0.9),
+        legend.text = element_text(size = 20),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key.size = unit(2, "lines"),
+        panel.border = element_blank(),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_text(size = 20, color = "black"))
+InterpersonalAdjustmentPlotAdult
+
+```
+
+### Visualisation of Model Estimates, Self Adjustment
+```{r}
+d_dyadic_model_newdata <- d_dyadic %>%
+  group_by(ID, Task, Familiarity, Diagnosis) %>%
+  data_grid(AdultPrevSelfLatency = seq_range(d_dyadic$AdultPrevSelfLatency, n = 50)) %>%
+  mutate(AdultPrevOtherLatency = mean(d_dyadic$AdultPrevOtherLatency, na.rm = T))
+
+pred_data <- add_predicted_draws(object = m_dyad_coupling_adaptation, 
+                newdata = d_dyadic_model_newdata,
+                resp = "AdultLatency", value = ".prediction")
+
+dyadic_predicted_data <- pred_data %>%
+  group_by(ID, Task, Familiarity, Diagnosis, AdultPrevSelfLatency) %>%
+  dplyr::summarise(mean = mean(.prediction)) %>%
+  mutate(Diagnosis = ifelse(Diagnosis == "ASD", "Autism Group", "Typical Development"))  %>%
+  mutate(Condition = case_when(
+    Familiarity == "Familiar" & Task == "MatchingGame" ~ "Matching With Parent",
+    Familiarity == "Familiar" & Task == "Questions" ~ "Convo With Parent",
+    Familiarity == "Unfamiliar" & Task == "Questions" ~ "Convo With Experimenter")) %>%
+  mutate(Condition = factor(Condition, levels = c("Matching With Parent", "Convo With Parent", "Convo With Experimenter")))
+
+
+SelfAdjustmentPlotAdult <- dyadic_predicted_data %>%
+  ggplot() +
+  geom_smooth(aes(x = AdultPrevSelfLatency, y = mean, color = Diagnosis, group = ID), 
+              method = "lm", linewidth = 0.15, alpha = 0.4, se = FALSE) +
+  geom_smooth(aes(x = AdultPrevSelfLatency, y = mean, color = Diagnosis), linewidth = 2.5, method = "lm", se = F) +
+  facet_wrap(~ Condition) +
+  scale_fill_manual(values = c("#009E73", "#CC79A7")) +
+  scale_color_manual(values = c("#009E73", "#CC79A7")) +
+  ylab('Adult Response Latency (seconds)') +
+  xlab('Previous Adult Response Latency (seconds)') +
+  scale_x_continuous(breaks = seq(0, 5, by = 1), limits = c(0, 3.5)) +
+  scale_y_continuous(limits = c(0, 2), breaks = c(-2, -1, 0, 1, 2)) +
+  guides(fill = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1)),
+         color = guide_legend(reverse=TRUE, override.aes = list(alpha = 0.5, linewidth = 1, fill = NA))) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5, size=20), 
+        axis.text.x = element_text(size = 20, color = "black"),
+        axis.title.x = element_text(size = 20, color = "black"),
+        axis.title.y = element_blank(),  
+        axis.text.y = element_text(size = 20, color = "black"),
+        legend.title = element_blank(),
+        legend.position = "none",
+        legend.background = element_rect(fill = "transparent", color = NA),
+        panel.border = element_blank(),
+        legend.text = element_text(size = 20),
+        strip.background = element_rect(color="white", fill="white", linewidth=1.5, linetype="solid"),
+        strip.text.x = element_blank())
+SelfAdjustmentPlotAdult
+
+combined_plot <- plot_grid(
+  InterpersonalAdjustmentPlotAdult, SelfAdjustmentPlotAdult,
+  ncol = 1,                 
+  align = 'v',              
+  axis = 'l',              
+  rel_heights = c(1, 1)   
+)
+
+combined_plot <- plot_grid(
+  InterpersonalAdjustmentPlotAdult, SelfAdjustmentPlotAdult,
+  ncol = 1,
+  align = 'v',
+  axis = 'l',
+  rel_heights = c(1, 1)
+)
+
+SelfAndInterpersonalAdjustmentPlotsAdult <- ggdraw(clip = "off") +
+  draw_plot(combined_plot, x = 0.02) +
+  draw_text(
+    "Adult Response Latency (seconds)",
+    x = 0.01,                   
+    y = 0.5,                    
+    angle = 90,                 
+    vjust = 0.5,                
+    size = 20                   
+  )
+```
+
